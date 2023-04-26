@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use sqlx::{
     database::HasArguments,
     query::{Query, QueryAs},
-    Database, Encode, FromRow, Type,
+    Database, Encode, FromRow, Type, types::Uuid,
 };
 
 pub trait SqlBuilderExpression<'q> {
@@ -26,6 +26,8 @@ pub enum Value<'a> {
     OptionDateTimeUtc(DateTime<Utc>),
     Binary(&'a [u8]),
     OptionBinary(Option<&'a [u8]>),
+    Uuid(Uuid),
+    OptionUuid(Option<Uuid>),
 }
 
 macro_rules! impl_value_expr {
@@ -68,6 +70,11 @@ impl_value_expr!(v: Option<String> => Value::OptionString(v));
 
 impl_value_expr!(v: DateTime<Utc> => Value::DateTimeUtc(v));
 impl_value_expr!(v: &'q DateTime<Utc> => Value::DateTimeUtc(v.to_owned()));
+
+impl_value_expr!(v: Uuid => Value::Uuid(v));
+impl_value_expr!(v: &'q Uuid => Value::Uuid(v.to_owned()));
+impl_value_expr!(v: Option<Uuid> => Value::OptionUuid(v));
+impl_value_expr!(v: Option<&'q Uuid> => Value::OptionUuid(v.map(|v| v.to_owned())));
 
 pub struct QueryBuilder<'q> {
     kind: DBKind,
@@ -143,6 +150,8 @@ impl<'q> QueryBuilder<'q> {
         Option<DateTime<Utc>>: Encode<'a, DB> + Type<DB>,
         &'a [u8]: Encode<'a, DB> + Type<DB>,
         Option<&'a [u8]>: Encode<'a, DB> + Type<DB>,
+        Uuid: Encode<'a, DB> + Type<DB>,
+        Option<Uuid>: Encode<'a, DB> + Type<DB>,
     {
         log::trace!("sql:\n  {}\n  vars:\n  {:#?}", self.query, self.arguments);
         let mut query = sqlx::query::<DB>(&self.query);
@@ -160,6 +169,8 @@ impl<'q> QueryBuilder<'q> {
                 Value::OptionDateTimeUtc(v) => query.bind(v),
                 Value::Binary(v) => query.bind(v),
                 Value::OptionBinary(v) => query.bind(v),
+                Value::Uuid(v) => query.bind(v),
+                Value::OptionUuid(v) => query.bind(v),
             };
         }
         query
@@ -181,6 +192,8 @@ impl<'q> QueryBuilder<'q> {
         Option<DateTime<Utc>>: Encode<'a, DB> + Type<DB>,
         &'a [u8]: Encode<'a, DB> + Type<DB>,
         Option<&'a [u8]>: Encode<'a, DB> + Type<DB>,
+        Uuid: Encode<'a, DB> + Type<DB>,
+        Option<Uuid>: Encode<'a, DB> + Type<DB>,
     {
         log::trace!("sql: {}, vars: {:?}", self.query, self.arguments);
         let mut query = sqlx::query_as::<DB, O>(&self.query);
@@ -198,6 +211,8 @@ impl<'q> QueryBuilder<'q> {
                 Value::OptionDateTimeUtc(v) => query.bind(v),
                 Value::Binary(v) => query.bind(v),
                 Value::OptionBinary(v) => query.bind(v),
+                Value::Uuid(v) => query.bind(v),
+                Value::OptionUuid(v) => query.bind(v),
             };
         }
         query

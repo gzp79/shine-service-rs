@@ -1,0 +1,8 @@
+thiserror
+sqlx
+sqlite
+postgres
+tokio
+rustls
+uuid
+gzp
