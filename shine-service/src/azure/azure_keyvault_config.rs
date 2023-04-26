@@ -55,6 +55,7 @@ impl ConfigSource for AzureKeyvaultConfigSource {
                     for raw in &response.value {
                         let key = raw.id.split('/').last();
                         if let Some(key) = key {
+                            let path = key.replace('-', ".");
                             log::info!("Reading secret {:?}", key);
                             let secret = self
                                 .client
@@ -63,7 +64,7 @@ impl ConfigSource for AzureKeyvaultConfigSource {
                                 .await
                                 .map_err(AzureKeyvaultConfigError)?;
                             if secret.attributes.enabled {
-                                config.insert(key.to_owned(), secret.value.into());
+                                config.insert(path, secret.value.into());
                             }
                         }
                     }
