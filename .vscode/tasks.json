@@ -1,0 +1,156 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558 
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "fmt",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "fmt"
+            ],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "clear": true
+            },
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "clippy",
+            "type": "shell",
+            "command": "cargo clippy -p ${input:projects} --all-targets",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "clear": true
+            },
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "udeps",
+            "type": "shell",
+            "command": "cargo udeps -p ${input:projects}",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "clear": true
+            },
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "outdated",
+            "type": "shell",
+            "command": "cargo outdated -R -p ${input:projects}",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "clear": true
+            },
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "cargo build -p ${input:projects} --all-targets",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "clear": true
+            },
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": "build"
+        },      
+        {
+            "label": "test ",
+            "type": "shell",
+            "command": "cargo test -p ${input:projects}",
+            "options": {
+                "env": {
+                    "_RUST_LOG": "debug",
+                    "RUST_BACKTRACE": "full"
+                },
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "clear": true
+            },
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "test miri",
+            "type": "shell",
+            "command": "cargo miri test -p ${input:projects}",
+            "options": {
+                "env": {
+                    "_RUST_LOG": "debug",
+                    "RUST_BACKTRACE": "full"
+                },
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "clear": true
+            },
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "run server",
+            "type": "shell",
+            "command": "cargo run --release",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "clear": true
+            },
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": "build"
+        },
+      
+    ],
+    "inputs": [
+        {
+            "type": "pickString",
+            "id": "projects",
+            "description": "Select project",
+            "options": [
+                "sqlx-interpolation-macro",
+                "sqlx-interpolation",
+                "shine-service"
+            ],
+            "default": "asset-service"
+        }
+    ]
+}

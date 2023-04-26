@@ -1,0 +1,6 @@
+[workspace]
+members = [
+	"sqlx/sqlx-interpolation-macro",
+	"sqlx/sqlx-interpolation",	
+	"shine-service",
+]

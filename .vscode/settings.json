@@ -1,0 +1,29 @@
+{
+    "terminal.integrated.env.windows": {
+        "_RUST_BACKTRACE": "full",
+        "MIRIFLAGS": "-Zmiri-backtrace=full",
+        "RUST_LOG": "info, server=trace,sqlx=WARN"
+    },
+
+    "cSpell.words": [
+        "chrono",
+        "crey",
+        "datetime",
+        "keyvault",
+        "keyvaults",
+        "opentelemetry",
+        "otconv",
+        "otel",
+        "otsdk",
+        "QUIC",
+        "reqwest",
+        "rustls",
+        "serde",
+        "signum",
+        "sqlx",
+        "thiserror",
+        "TIMESTAMPTZ",
+        "zipkin"
+    ],
+    "cmake.configureOnOpen": false
+}

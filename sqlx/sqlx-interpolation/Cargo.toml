@@ -1,0 +1,13 @@
+[package]
+name = "sqlx-interpolation"
+version = "0.1.0"
+authors = ["gzp-crey <z.p.gaal@google.com>"]
+edition = "2021"
+
+[dependencies]
+log = "0.4"
+thiserror = "1.0"
+
+chrono = "0.4"
+sqlx = { version = "0.6", features = ["sqlite", "postgres", "any", "chrono", "runtime-tokio-rustls"] }
+sqlx-interpolation-macro = { path = "../sqlx-interpolation-macro", version = "0.1.0" }

@@ -1,0 +1,40 @@
+[package]
+name = "shine-service"
+version = "0.1.0"
+authors = ["gzp-crey <z.p.gaal@google.com>"]
+edition = "2021"
+
+
+[features]
+default = ["ot_jaeger", "ot_zipkin", "ot_app_insight"]
+
+ot_jaeger = ["opentelemetry-jaeger"]
+ot_zipkin = ["opentelemetry-zipkin"]
+ot_app_insight = ["reqwest", "opentelemetry-application-insights"]
+
+[dependencies]
+log = "0.4"
+thiserror = "1.0"
+config = "0.13"
+
+serde = { version = "1.0", features = ["derive"] }
+futures = "0.3"
+reqwest = { version = "0.11", optional = true }
+tokio = {version = "1.27", features = ["macros", "rt-multi-thread", "signal"] }
+
+azure_core = { version = "0.11" }
+azure_identity = { version = "0.11" }
+azure_security_keyvault = { version = "0.11" }
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-opentelemetry = "0.18"
+opentelemetry = { version = "0.18", features = ["rt-tokio"] }
+opentelemetry-semantic-conventions = "0.10"
+opentelemetry-jaeger = { version = "0.17", features = ["rt-tokio"], optional = true }
+opentelemetry-zipkin = { version ="0.16", features = ["reqwest-client"], default-features = false, optional = true }
+opentelemetry-application-insights = { version = "0.24", optional = true }
+
+axum = "0.6"
+axum-tracing-opentelemetry = "0.10"
+
