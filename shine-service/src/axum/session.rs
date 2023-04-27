@@ -129,6 +129,7 @@ impl<T: Serialize> IntoResponse for Session<T> {
             cookie.set_secure(true);
             cookie.set_expires(Expiration::Session);
             cookie.set_same_site(SameSite::Lax);
+            cookie.set_path("/");
 
             jar = jar.add(cookie)
         }
