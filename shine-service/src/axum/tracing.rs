@@ -1,11 +1,11 @@
-use axum::{routing::put, Extension, Json, Router};
+use axum::{extract::State, routing::put, Json, Router};
 use opentelemetry::{
     sdk::{trace as otsdk, Resource},
     trace::{TraceError, Tracer},
 };
 use opentelemetry_semantic_conventions::resource as otconv;
 use serde::{Deserialize, Serialize};
-use std::{fmt, sync::Arc};
+use std::sync::Arc;
 use thiserror::Error as ThisError;
 use tracing::{instrument::WithSubscriber, log, subscriber::SetGlobalDefaultError, Dispatch, Level, Subscriber};
 use tracing_opentelemetry::PreSampledTracer;
@@ -78,26 +78,17 @@ pub struct TraceConfigRequest {
     filter: String,
 }
 
-async fn reconfigure(
-    Extension(state): Extension<Arc<State>>,
-    Json(format): Json<TraceConfigRequest>,
-) -> Result<(), String> {
+async fn reconfigure(State(data): State<Arc<Data>>, Json(format): Json<TraceConfigRequest>) -> Result<(), String> {
     log::trace!("config: {:#?}", format);
-    if let Some(reload_handle) = &state.reload_handle {
+    if let Some(reload_handle) = &data.reload_handle {
         reload_handle.reconfigure(format.filter)
     } else {
         Err("Trace reconfigure is not enabled".into())
     }
 }
 
-struct State {
+struct Data {
     reload_handle: Option<Box<dyn DynHandle>>,
-}
-
-impl fmt::Debug for State {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("State").finish()
-    }
 }
 
 pub struct TracingService {
@@ -221,17 +212,16 @@ impl TracingService {
         Ok(())
     }
 
-    pub fn into_router(self) -> Router {
+    pub fn into_router<S>(self) -> Router<S>
+    where
+        S: Clone + Send + Sync + 'static,
+    {
         let mut router = Router::new();
         // todo: consider adding it conditionally 'if self.reload_handle.is_some()'
         router = router.route("/config", put(reconfigure));
 
-        let state = State {
+        router.with_state(Arc::new(Data {
             reload_handle: self.reload_handle,
-        };
-        let state = Arc::new(state);
-        router = router.layer(Extension(state));
-
-        router
+        }))
     }
 }
