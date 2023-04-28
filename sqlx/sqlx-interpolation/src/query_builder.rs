@@ -150,7 +150,7 @@ impl<'q> QueryBuilder<'q> {
         Option<DateTime<Utc>>: Encode<'a, DB> + Type<DB>,
         &'a [u8]: Encode<'a, DB> + Type<DB>,
         Option<&'a [u8]>: Encode<'a, DB> + Type<DB>,
-        //Uuid: Encode<'a, DB> + Type<DB>, 
+        //Uuid: Encode<'a, DB> + Type<DB>,
         //Option<Uuid>: Encode<'a, DB> + Type<DB>,
     {
         log::trace!("sql:\n  {}\n  vars:\n  {:#?}", self.query, self.arguments);
