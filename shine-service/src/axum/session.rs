@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use axum::{
     extract::FromRequestParts,
     http::request::Parts,
-    response::{IntoResponse, Response},
+    response::{IntoResponse, IntoResponseParts, Response, ResponseParts},
     Extension, RequestPartsExt,
 };
 use axum_extra::extract::{
@@ -117,8 +117,10 @@ where
     }
 }
 
-impl<T: Serialize> IntoResponse for Session<T> {
-    fn into_response(self) -> Response {
+impl<T: Serialize> IntoResponseParts for Session<T> {
+    type Error = Infallible;
+
+    fn into_response_parts(self, res: ResponseParts) -> Result<ResponseParts, Self::Error> {
         let Session { data: session, meta } = self;
 
         let mut jar = SignedCookieJar::new(meta.key.clone());
@@ -134,6 +136,12 @@ impl<T: Serialize> IntoResponse for Session<T> {
             jar = jar.add(cookie)
         }
 
-        jar.into_response()
+        jar.into_response_parts(res)
+    }
+}
+
+impl<T: Serialize> IntoResponse for Session<T> {
+    fn into_response(self) -> Response {
+        (self, ()).into_response()
     }
 }
