@@ -24,7 +24,7 @@ pub enum SessionError {
 /// Layer to configure Session cookies
 #[derive(Clone)]
 pub struct SessionMeta<T> {
-    pub cookie_name: String,
+    cookie_name: String,
     key: Key,
     _ph: PhantomData<T>,
 }
@@ -123,18 +123,23 @@ impl<T: Serialize> IntoResponseParts for Session<T> {
     fn into_response_parts(self, res: ResponseParts) -> Result<ResponseParts, Self::Error> {
         let Session { data: session, meta } = self;
 
-        let mut jar = SignedCookieJar::new(meta.key.clone());
-
-        if let Some(session) = session {
+        
+        let cookie = if let Some(session) = session {
             let raw_data = serde_json::to_string(&session).expect("failed to serialize session data");
             let mut cookie = Cookie::new(meta.cookie_name.clone(), raw_data);
             cookie.set_secure(true);
             cookie.set_expires(Expiration::Session);
             cookie.set_same_site(SameSite::Lax);
             cookie.set_path("/");
-
-            jar = jar.add(cookie)
-        }
+            cookie
+        } else {
+            let mut cookie = Cookie::named(meta.cookie_name.clone());
+            cookie.set_expires(Expiration::Session);
+            cookie
+        };
+        
+        let jar = SignedCookieJar::new(meta.key.clone())
+        .add(cookie);
 
         jar.into_response_parts(res)
     }
