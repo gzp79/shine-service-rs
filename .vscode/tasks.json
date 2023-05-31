@@ -146,8 +146,6 @@
             "id": "projects",
             "description": "Select project",
             "options": [
-                "sqlx-interpolation-macro",
-                "sqlx-interpolation",
                 "shine-service"
             ],
             "default": "asset-service"
