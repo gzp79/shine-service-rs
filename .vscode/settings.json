@@ -20,7 +20,6 @@
         "rustls",
         "serde",
         "signum",
-        "sqlx",
         "thiserror",
         "TIMESTAMPTZ",
         "zipkin"
