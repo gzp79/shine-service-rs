@@ -7,14 +7,14 @@ use opentelemetry_semantic_conventions::resource as otconv;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use thiserror::Error as ThisError;
-use tracing::{instrument::WithSubscriber, log, subscriber::SetGlobalDefaultError, Dispatch, Level, Subscriber};
-use tracing_opentelemetry::PreSampledTracer;
+use tracing::{log, subscriber::SetGlobalDefaultError, Dispatch, Level, Subscriber};
+use tracing_opentelemetry::{OpenTelemetryLayer, PreSampledTracer};
 use tracing_subscriber::{
     filter::EnvFilter,
     layer::SubscriberExt,
     registry::LookupSpan,
     reload::{self, Handle},
-    Layer,
+    Layer, Registry,
 };
 
 pub use axum_tracing_opentelemetry::opentelemetry_tracing_layer as tracing_layer;
@@ -34,7 +34,7 @@ pub enum Telemetry {
     /// Disable telemetry
     None,
 
-    /// Dump trace to the standard output
+    /// Enable telemetry to the standard output
     StdOut,
 
     /// Enable Jaeger telemetry (https://www.jaegertracing.io)
@@ -45,7 +45,7 @@ pub enum Telemetry {
     #[cfg(feature = "ot_zipkin")]
     Zipkin,
 
-    /// AppInsight telemetry
+    /// Enable AppInsight telemetry
     #[cfg(feature = "ot_app_insight")]
     AppInsight { instrumentation_key: String },
 }
@@ -54,6 +54,7 @@ pub enum Telemetry {
 #[serde(rename_all = "camelCase")]
 pub struct TracingConfig {
     allow_reconfigure: bool,
+    enable_console_log: bool,
     telemetry: Telemetry,
 }
 
@@ -87,6 +88,10 @@ async fn reconfigure(State(data): State<Arc<Data>>, Json(format): Json<TraceConf
     }
 }
 
+struct EmptyLayer;
+
+impl<S: Subscriber> Layer<S> for EmptyLayer {}
+
 struct Data {
     reload_handle: Option<Box<dyn DynHandle>>,
 }
@@ -99,7 +104,7 @@ impl TracingService {
     /// Create a Service and initialize the global tracing logger
     pub async fn new(service_name: &str, config: &TracingConfig) -> Result<TracingService, TracingError> {
         let mut service = TracingService { reload_handle: None };
-        service.install_logger(service_name, config, tracing_subscriber::registry())?;
+        service.install_telemetry(service_name, config)?;
         Ok(service)
     }
 
@@ -111,33 +116,60 @@ impl TracingService {
         Ok(())
     }
 
-    fn install_telemetry_with_tracer<L, T>(
-        &mut self,
-        _config: &TracingConfig,
-        tracing_pipeline: L,
-        tracer: T,
-    ) -> Result<(), TracingError>
+    fn ot_layer<T>(tracer: T) -> OpenTelemetryLayer<Registry, T>
     where
-        L: for<'a> LookupSpan<'a> + Subscriber + WithSubscriber + Send + Sync,
         T: 'static + Tracer + PreSampledTracer + Send + Sync,
     {
-        let telemetry = tracing_opentelemetry::layer()
+        tracing_opentelemetry::layer()
             .with_tracked_inactivity(true)
-            .with_tracer(tracer);
-        let tracing_pipeline = tracing_pipeline.with(telemetry);
-        self.set_global_logger(tracing_pipeline)?;
-        Ok(())
+            .with_tracer(tracer)
     }
 
-    fn install_telemetry<L>(
-        &mut self,
-        service_name: &str,
-        config: &TracingConfig,
-        tracing_pipeline: L,
-    ) -> Result<(), TracingError>
+    fn install_filter<T>(&mut self, config: &TracingConfig, pipeline: T) -> Result<(), TracingError>
     where
-        L: for<'a> LookupSpan<'a> + Subscriber + WithSubscriber + Send + Sync,
+        T: for<'a> LookupSpan<'a> + Subscriber + Send + Sync,
     {
+        if config.allow_reconfigure {
+            // enable filtering with reconfiguration capabilities
+            let env_filter = EnvFilter::from_default_env().add_directive(Level::INFO.into());
+            let (reload_env_filter, reload_handle) = reload::Layer::new(env_filter);
+            let pipeline = pipeline.with(reload_env_filter);
+            self.reload_handle = Some(Box::new(reload_handle));
+
+            self.set_global_logger(pipeline)?;
+            Ok(())
+        } else {
+            // enable filtering from the environment variables
+            let env_filter = EnvFilter::from_default_env().add_directive(Level::INFO.into());
+            let pipeline = pipeline.with(env_filter);
+
+            self.set_global_logger(pipeline)?;
+            Ok(())
+        }
+    }
+
+    fn install_logger<T>(&mut self, config: &TracingConfig, pipeline: T) -> Result<(), TracingError>
+    where
+        T: for<'a> LookupSpan<'a> + Subscriber + Send + Sync,
+    {
+        if config.enable_console_log {
+            let console_layer = tracing_subscriber::fmt::Layer::new().pretty();
+            let pipeline = pipeline.with(console_layer);
+            self.install_filter(config, pipeline)
+        } else {
+            self.install_filter(config, pipeline)
+        }
+    }
+
+    fn install_pipeline<L>(&mut self, config: &TracingConfig, layer: L) -> Result<(), TracingError>
+    where
+        L: Layer<Registry> + Send + Sync,
+    {
+        let pipeline = tracing_subscriber::registry().with(layer);
+        self.install_logger(config, pipeline)
+    }
+
+    fn install_telemetry(&mut self, service_name: &str, config: &TracingConfig) -> Result<(), TracingError> {
         let resource = Resource::new(vec![otconv::SERVICE_NAME.string(service_name.to_string())]);
 
         match &config.telemetry {
@@ -149,7 +181,7 @@ impl TracingService {
                             .with_sampler(otsdk::Sampler::AlwaysOn),
                     )
                     .install_simple();
-                self.install_telemetry_with_tracer(config, tracing_pipeline, tracer)
+                self.install_pipeline(config, Self::ot_layer(tracer))
             }
             #[cfg(feature = "ot_jaeger")]
             Telemetry::Jaeger => {
@@ -157,7 +189,7 @@ impl TracingService {
                     .with_trace_config(otsdk::config().with_resource(resource))
                     .with_service_name(service_name.to_string())
                     .install_batch(opentelemetry::runtime::Tokio)?;
-                self.install_telemetry_with_tracer(config, tracing_pipeline, tracer)
+                self.install_pipeline(config, Self::ot_layer(tracer))
             }
             #[cfg(feature = "ot_zipkin")]
             Telemetry::Zipkin => {
@@ -165,7 +197,7 @@ impl TracingService {
                     .with_trace_config(otsdk::config().with_resource(resource))
                     .with_service_name(service_name.to_string())
                     .install_batch(opentelemetry::runtime::Tokio)?;
-                self.install_telemetry_with_tracer(config, tracing_pipeline, tracer)
+                self.install_pipeline(config, Self::ot_layer(tracer))
             }
             #[cfg(feature = "ot_app_insight")]
             Telemetry::AppInsight { instrumentation_key } => {
@@ -174,42 +206,10 @@ impl TracingService {
                     .with_service_name(service_name.to_string())
                     .with_client(reqwest::Client::new())
                     .install_batch(opentelemetry::runtime::Tokio);
-                self.install_telemetry_with_tracer(config, tracing_pipeline, tracer)
+                self.install_pipeline(config, Self::ot_layer(tracer))
             }
-            Telemetry::None => self.set_global_logger(tracing_pipeline),
+            Telemetry::None => self.install_pipeline(config, EmptyLayer),
         }
-    }
-
-    fn install_logger<L>(
-        &mut self,
-        service_name: &str,
-        config: &TracingConfig,
-        tracing_pipeline: L,
-    ) -> Result<(), TracingError>
-    where
-        L: for<'a> LookupSpan<'a> + Subscriber + WithSubscriber + Send + Sync,
-    {
-        if config.allow_reconfigure {
-            let env_filter = EnvFilter::from_default_env().add_directive(Level::INFO.into());
-            let (env_filter, reload_handle) = reload::Layer::new(env_filter);
-            self.reload_handle = Some(Box::new(reload_handle));
-            let tracing_pipeline = tracing_pipeline.with(env_filter);
-
-            let fmt = tracing_subscriber::fmt::Layer::new();
-            let tracing_pipeline = tracing_pipeline.with(fmt);
-
-            self.install_telemetry(service_name, config, tracing_pipeline)?;
-        } else {
-            let env_filter = EnvFilter::from_default_env().add_directive(Level::INFO.into());
-            let tracing_pipeline = tracing_pipeline.with(env_filter);
-
-            let fmt = tracing_subscriber::fmt::Layer::new();
-            let tracing_pipeline = tracing_pipeline.with(fmt);
-
-            self.install_telemetry(service_name, config, tracing_pipeline)?;
-        }
-
-        Ok(())
     }
 
     pub fn into_router<S>(self) -> Router<S>
