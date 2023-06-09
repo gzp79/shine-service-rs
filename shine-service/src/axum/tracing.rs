@@ -1,4 +1,10 @@
-use axum::{extract::State, routing::put, Json, Router};
+use axum::{
+    extract::State,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    routing::put,
+    Json, Router,
+};
 use opentelemetry::{
     sdk::{trace as otsdk, Resource},
     trace::{TraceError, Tracer},
@@ -79,12 +85,15 @@ pub struct TraceConfigRequest {
     filter: String,
 }
 
-async fn reconfigure(State(data): State<Arc<Data>>, Json(format): Json<TraceConfigRequest>) -> Result<(), String> {
+async fn reconfigure(State(data): State<Arc<Data>>, Json(format): Json<TraceConfigRequest>) -> Response {
     log::trace!("config: {:#?}", format);
     if let Some(reload_handle) = &data.reload_handle {
-        reload_handle.reconfigure(format.filter)
+        match reload_handle.reconfigure(format.filter) {
+            Err(err) => (StatusCode::BAD_REQUEST, err).into_response(),
+            Ok(_) => StatusCode::OK.into_response(),
+        }
     } else {
-        Err("Trace reconfigure is not enabled".into())
+        (StatusCode::BAD_REQUEST, "Trace configure is disabled").into_response()
     }
 }
 
@@ -217,7 +226,6 @@ impl TracingService {
         S: Clone + Send + Sync + 'static,
     {
         let mut router = Router::new();
-        // todo: consider adding it conditionally 'if self.reload_handle.is_some()'
         router = router.route("/config", put(reconfigure));
 
         router.with_state(Arc::new(Data {
