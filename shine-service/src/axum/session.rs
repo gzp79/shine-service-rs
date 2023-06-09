@@ -61,8 +61,8 @@ pub struct Session<T> {
 }
 
 impl<T> Session<T> {
-    pub fn set(&mut self, data: T) {
-        self.data = Some(data);
+    pub fn set<S: Into<T>>(&mut self, data: S) {
+        self.data = Some(data.into());
     }
 
     pub fn take(&mut self) -> Option<T> {
@@ -123,7 +123,6 @@ impl<T: Serialize> IntoResponseParts for Session<T> {
     fn into_response_parts(self, res: ResponseParts) -> Result<ResponseParts, Self::Error> {
         let Session { data: session, meta } = self;
 
-        
         let cookie = if let Some(session) = session {
             let raw_data = serde_json::to_string(&session).expect("failed to serialize session data");
             let mut cookie = Cookie::new(meta.cookie_name.clone(), raw_data);
@@ -137,9 +136,8 @@ impl<T: Serialize> IntoResponseParts for Session<T> {
             cookie.set_expires(Expiration::Session);
             cookie
         };
-        
-        let jar = SignedCookieJar::new(meta.key.clone())
-        .add(cookie);
+
+        let jar = SignedCookieJar::new(meta.key.clone()).add(cookie);
 
         jar.into_response_parts(res)
     }
