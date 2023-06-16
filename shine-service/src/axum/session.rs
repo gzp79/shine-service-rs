@@ -1,5 +1,4 @@
 use std::{convert::Infallible, fmt, marker::PhantomData, ops, sync::Arc};
-
 use async_trait::async_trait;
 use axum::{
     extract::FromRequestParts,
@@ -14,6 +13,7 @@ use axum_extra::extract::{
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error as ThisError;
+use time::{OffsetDateTime, Duration};
 
 #[derive(Debug, ThisError)]
 pub enum SessionError {
@@ -26,6 +26,7 @@ pub enum SessionError {
 pub struct SessionMeta<T> {
     cookie_name: String,
     key: Key,
+    domain: Option<String>,
     _ph: PhantomData<T>,
 }
 
@@ -38,6 +39,7 @@ impl<T> SessionMeta<T> {
         Ok(Self {
             cookie_name: "sid".into(),
             key,
+            domain: None,
             _ph: PhantomData,
         })
     }
@@ -45,6 +47,13 @@ impl<T> SessionMeta<T> {
     pub fn with_cookie_name<S: ToString>(self, cookie_name: S) -> Self {
         Self {
             cookie_name: cookie_name.to_string(),
+            ..self
+        }
+    }
+
+    pub fn with_domain<S: ToString>(self, domain: S) -> Self {
+        Self {
+            domain: Some(domain.to_string()),
             ..self
         }
     }
@@ -122,20 +131,26 @@ impl<T: Serialize> IntoResponseParts for Session<T> {
 
     fn into_response_parts(self, res: ResponseParts) -> Result<ResponseParts, Self::Error> {
         let Session { data: session, meta } = self;
-
-        let cookie = if let Some(session) = session {
+                
+        let mut cookie = if let Some(session) = session {
             let raw_data = serde_json::to_string(&session).expect("failed to serialize session data");
+
             let mut cookie = Cookie::new(meta.cookie_name.clone(), raw_data);
-            cookie.set_secure(true);
             cookie.set_expires(Expiration::Session);
-            cookie.set_same_site(SameSite::Lax);
-            cookie.set_path("/");
             cookie
         } else {
             let mut cookie = Cookie::named(meta.cookie_name.clone());
-            cookie.set_expires(Expiration::Session);
+            cookie.set_expires(OffsetDateTime::now_utc() - Duration::days(1));
             cookie
         };
+
+        cookie.set_secure(true);
+        if let Some(domain) = &meta.domain {
+            cookie.set_domain(domain.clone());
+        }
+        cookie.set_http_only(true);
+        cookie.set_same_site(SameSite::Lax);
+        cookie.set_path("/");
 
         let jar = SignedCookieJar::new(meta.key.clone()).add(cookie);
 

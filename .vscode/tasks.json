@@ -146,7 +146,8 @@
             "id": "projects",
             "description": "Select project",
             "options": [
-                "shine-service"
+                "shine-service",
+                "shine-macros"
             ],
             "default": "asset-service"
         }

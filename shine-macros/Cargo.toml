@@ -1,0 +1,12 @@
+[package]
+name = "shine-macros"
+version = "0.1.0"
+authors = ["gzp-crey <z.p.gaal@google.com>"]
+edition = "2021"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "1.0"
+syn = "2.0"

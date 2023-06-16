@@ -1,4 +1,5 @@
 [workspace]
 members = [
 	"shine-service",
+	"shine-macros",
 ]
