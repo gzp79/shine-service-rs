@@ -1,4 +1,4 @@
-use azure_identity::AzureCliCredential;
+use azure_core::auth::TokenCredential;
 use azure_security_keyvault::SecretClient;
 use config::{ConfigError, Map as ConfigMap, Source as ConfigSource, Value as ConfigValue};
 use futures::StreamExt;
@@ -26,7 +26,7 @@ pub struct AzureKeyvaultConfigSource {
 impl AzureKeyvaultConfigSource {
     pub fn new(
         rt_handle: &RtHandle,
-        azure_credentials: Arc<AzureCliCredential>,
+        azure_credentials: Arc<dyn TokenCredential>,
         keyvault_url: &str,
     ) -> Result<AzureKeyvaultConfigSource, ConfigError> {
         let client = SecretClient::new(keyvault_url, azure_credentials).map_err(AzureKeyvaultConfigError)?;
