@@ -1,4 +1,3 @@
-use std::{convert::Infallible, fmt, marker::PhantomData, ops, sync::Arc};
 use async_trait::async_trait;
 use axum::{
     extract::FromRequestParts,
@@ -12,8 +11,9 @@ use axum_extra::extract::{
 };
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use serde::{de::DeserializeOwned, Serialize};
+use std::{convert::Infallible, fmt, marker::PhantomData, ops, sync::Arc};
 use thiserror::Error as ThisError;
-use time::{OffsetDateTime, Duration};
+use time::{Duration, OffsetDateTime};
 
 #[derive(Debug, ThisError)]
 pub enum SessionError {
@@ -70,8 +70,8 @@ pub struct Session<T> {
 }
 
 impl<T> Session<T> {
-    pub fn set<S: Into<T>>(&mut self, data: S) {
-        self.data = Some(data.into());
+    pub fn set(&mut self, data: T) {
+        self.data = Some(data);
     }
 
     pub fn take(&mut self) -> Option<T> {
@@ -131,7 +131,7 @@ impl<T: Serialize> IntoResponseParts for Session<T> {
 
     fn into_response_parts(self, res: ResponseParts) -> Result<ResponseParts, Self::Error> {
         let Session { data: session, meta } = self;
-                
+
         let mut cookie = if let Some(session) = session {
             let raw_data = serde_json::to_string(&session).expect("failed to serialize session data");
 

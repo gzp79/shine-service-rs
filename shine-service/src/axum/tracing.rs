@@ -13,7 +13,7 @@ use opentelemetry_semantic_conventions::resource as otconv;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use thiserror::Error as ThisError;
-use tracing::{log, subscriber::SetGlobalDefaultError, Dispatch, Level, Subscriber};
+use tracing::{log, subscriber::SetGlobalDefaultError, Dispatch, Subscriber};
 use tracing_opentelemetry::{OpenTelemetryLayer, PreSampledTracer};
 use tracing_subscriber::{
     filter::EnvFilter,
@@ -138,9 +138,10 @@ impl TracingService {
     where
         T: for<'a> LookupSpan<'a> + Subscriber + Send + Sync,
     {
+        let env_filter = EnvFilter::from_default_env();
+
         if config.allow_reconfigure {
             // enable filtering with reconfiguration capabilities
-            let env_filter = EnvFilter::from_default_env().add_directive(Level::INFO.into());
             let (reload_env_filter, reload_handle) = reload::Layer::new(env_filter);
             let pipeline = pipeline.with(reload_env_filter);
             self.reload_handle = Some(Box::new(reload_handle));
@@ -149,7 +150,6 @@ impl TracingService {
             Ok(())
         } else {
             // enable filtering from the environment variables
-            let env_filter = EnvFilter::from_default_env().add_directive(Level::INFO.into());
             let pipeline = pipeline.with(env_filter);
 
             self.set_global_logger(pipeline)?;

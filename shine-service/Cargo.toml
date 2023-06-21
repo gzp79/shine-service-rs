@@ -34,6 +34,10 @@ rustls = "0.21"
 rustls-pemfile = "1.0"
 reqwest = { version = "0.11", optional = true }
 
+bb8 = "0.8"
+bb8-redis = "0.13"
+redis = { version = "0.23.0", features = ["tokio-comp", "tokio-rustls-comp"] }
+
 azure_core = { version = "0.12" }
 azure_identity = { version = "0.12" }
 azure_security_keyvault = { version = "0.12" }

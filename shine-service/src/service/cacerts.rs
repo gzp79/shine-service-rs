@@ -1,14 +1,13 @@
-use std::io::BufReader;
 use rustls::{Certificate, RootCertStore};
+use std::io::BufReader;
 
-pub fn get_certificates () -> Vec<Certificate> {
-
+pub fn get_certificates() -> Vec<Certificate> {
     let mut reader = BufReader::new(CERT_FILE.as_bytes());
     let certs = rustls_pemfile::certs(&mut reader).unwrap();
     certs.into_iter().map(Certificate).collect()
 }
 
-pub fn get_root_cert_store() ->  RootCertStore {
+pub fn get_root_cert_store() -> RootCertStore {
     let mut store = RootCertStore::empty();
     let certs = get_certificates();
     for cert in certs {
