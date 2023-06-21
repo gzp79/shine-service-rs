@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{
     axum::session::{Session, SessionMeta},
     service::{serde_session_key, SessionKey},
@@ -7,27 +9,31 @@ use axum::{
     body::Body,
     extract::FromRequestParts,
     http::{request::Parts, Response, StatusCode},
-    RequestPartsExt,
+    Extension, RequestPartsExt,
 };
 //use axum::{http::{Request, Response}, middleware::Next};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use shine_macros::RedisJsonValue;
 use uuid::Uuid;
 
-/// Current user accessible as an Extractor from the handlers.
-#[derive(Clone, Debug)]
+use super::RedisConnectionPool;
+
+/// Current user accessible as an Extractor from the handlers and also the
+/// stored data in the session cookie
+#[derive(Clone, Debug, Serialize, Deserialize, RedisJsonValue)]
 pub struct CurrentUser {
+    /// Indicates if this information confirms to the UserSessionValidator configuration.
+    #[serde(rename = "a")]
+    pub is_authentic: bool,
+    #[serde(rename = "id")]
     pub user_id: Uuid,
-
-    pub session_start: DateTime<Utc>,
+    #[serde(rename = "k", with = "serde_session_key")]
     pub key: SessionKey,
-
+    #[serde(rename = "t")]
+    pub session_start: DateTime<Utc>,
+    #[serde(rename = "n")]
     pub name: String,
-    /* pub email: Option<String>
-       for safety and GDPR the best if only identity knows about it and if required
-       a different set of endpoints can be created to manage it.
-    */
-    pub is_email_confirmed: bool,
     //pub client_agent: String,
 }
 
@@ -39,22 +45,21 @@ where
     type Rejection = Response<Body>;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        // todo: extract cookie
-        let mut user_session = parts
-            .extract::<Session<UserSessionData>>()
+        let Extension(validator) = parts
+            .extract::<Extension<Arc<UserSessionValidator>>>()
             .await
-            .expect("Missing SessionMeta extension");
+            .expect("Missing UserSessionValidator extension");
+
+        let user_session = parts
+            .extract::<Session<CurrentUser>>()
+            .await
+            .expect("Missing SessionMeta extension")
+            .take();
         log::info!("{:#?}", user_session);
 
-        if let Some(user_session) = user_session.take() {
-            //todo:: read details from redis
-            Ok(CurrentUser {
-                user_id: user_session.user_id,
-                session_start: Utc::now(),
-                key: user_session.key,
-                name: "todo".into(),
-                is_email_confirmed: false,
-            })
+        if let Some(mut current_user) = user_session {
+            validator.validate(&mut current_user).await?;
+            Ok(current_user)
         } else {
             let response = Response::builder()
                 .status(StatusCode::UNAUTHORIZED)
@@ -65,26 +70,27 @@ where
     }
 }
 
-/// Low level session handling. It is usually recommended to use CurrentUser instead of this structure.
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct UserSessionData {
-    #[serde(rename = "id")]
-    pub user_id: Uuid,
-    #[serde(rename = "sid", with = "serde_session_key")]
-    pub key: SessionKey,
+pub type UserSessionMeta = SessionMeta<CurrentUser>;
+pub type UserSession = Session<CurrentUser>;
+
+/// Add extra validation to the user session. While sessions are signed, this
+/// layer gets an up to date version from the identity service.
+pub struct UserSessionValidator {
+    redis: RedisConnectionPool,
 }
 
-pub type UserSessionMeta = SessionMeta<UserSessionData>;
-pub type UserSession = Session<UserSessionData>;
+impl UserSessionValidator {
+    pub fn new(redis: RedisConnectionPool) -> Self {
+        Self { redis }
+    }
+    pub fn into_layer(self) -> Extension<Arc<Self>> {
+        Extension(Arc::new(self))
+    }
 
-/*
-async fn user_session_middleware<B>(
-    Extension<(auth): TypedHeader<Authorization<Bearer>>,
-    request: Request<B>,
-    next: Next<B>,
-) -> Response {
-    let response = next.run(request).await;
-
-    response
+    pub async fn validate(&self, current_user: &mut CurrentUser) -> Result<(), Response<Body>> {
+        current_user.is_authentic = false;
+        // todo: check the in memory lru for the (user_id,key)
+        //  if not found check the redis cache
+        Ok(())
+    }
 }
-*/
