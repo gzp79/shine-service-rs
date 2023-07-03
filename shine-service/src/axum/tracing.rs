@@ -23,7 +23,7 @@ use tracing_subscriber::{
     Layer, Registry,
 };
 
-pub use axum_tracing_opentelemetry::opentelemetry_tracing_layer as tracing_layer;
+pub use axum_tracing_opentelemetry::middleware::OtelAxumLayer;
 
 #[derive(Debug, ThisError)]
 pub enum TracingError {

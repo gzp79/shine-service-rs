@@ -1,3 +1,5 @@
+mod core_config;
+pub use self::core_config::*;
 mod session_key;
 pub use self::session_key::*;
 mod user_session;

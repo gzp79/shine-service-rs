@@ -1,7 +1,7 @@
 [package]
 name = "shine-service"
 version = "0.1.0"
-authors = ["gzp-crey <z.p.gaal@google.com>"]
+authors = ["gzp <z.p.gaal@google.com>"]
 edition = "2021"
 
 
@@ -42,9 +42,9 @@ tokio-postgres = { version = "0.7", features = ["with-uuid-1", "with-chrono-0_4"
 tokio-rustls = "0.24"
 tokio-postgres-rustls = "0.10"
 
-azure_core = { version = "0.12" }
-azure_identity = { version = "0.12" }
-azure_security_keyvault = { version = "0.12" }
+azure_core = { version = "0.13" }
+azure_identity = { version = "0.13" }
+azure_security_keyvault = { version = "0.13" }
 
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -55,8 +55,9 @@ opentelemetry-jaeger = { version = "0.18", features = ["rt-tokio"], optional = t
 opentelemetry-zipkin = { version ="0.17", features = ["reqwest-client"], default-features = false, optional = true }
 opentelemetry-application-insights = { version = "0.25", optional = true }
 
+tower = "0.4"
 axum = "0.6"
 axum-extra = { version = "0.7", features = ["cookie", "cookie-signed", "cookie-private"] }
-axum-tracing-opentelemetry = "0.11"
+axum-tracing-opentelemetry = "0.12"
 
 shine-macros = { path = "../shine-macros", version = "0.1.0" }
