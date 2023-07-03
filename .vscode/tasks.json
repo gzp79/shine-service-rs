@@ -122,23 +122,7 @@
                 "$rustc"
             ],
             "group": "build"
-        },
-        {
-            "label": "run server",
-            "type": "shell",
-            "command": "cargo run --release",
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": false,
-                "clear": true
-            },
-            "problemMatcher": [
-                "$rustc"
-            ],
-            "group": "build"
-        },
-      
+        }      
     ],
     "inputs": [
         {
