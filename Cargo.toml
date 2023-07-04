@@ -2,4 +2,6 @@
 members = [
 	"shine-service",
 	"shine-macros",
+	"shine-test",
+	"shine-test-macros",
 ]

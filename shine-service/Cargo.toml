@@ -61,3 +61,6 @@ axum-extra = { version = "0.7", features = ["cookie", "cookie-signed", "cookie-p
 axum-tracing-opentelemetry = "0.12"
 
 shine-macros = { path = "../shine-macros", version = "0.1.0" }
+
+[dev-dependencies]
+shine-test = { path = "../shine-test", version = "0.1.0" }

@@ -2,10 +2,12 @@
     "terminal.integrated.env.windows": {
         "RUST_BACKTRACE": "full",
         "MIRIFLAGS": "-Zmiri-backtrace=full",
-        "RUST_LOG": "info, server=trace,sqlx=WARN"
+        "RUST_LOG": "info, pg_prepared_statements=trace,sqlx=WARN"
     },
 
     "cSpell.words": [
+        "asyncness",
+        "bindgen",
         "chrono",
         "crey",
         "datetime",

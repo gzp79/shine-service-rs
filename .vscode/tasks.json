@@ -131,7 +131,9 @@
             "description": "Select project",
             "options": [
                 "shine-service",
-                "shine-macros"
+                "shine-macros",
+                "shine-test",
+                "shine-test-macros"
             ],
             "default": "asset-service"
         }
