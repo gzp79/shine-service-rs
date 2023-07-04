@@ -74,6 +74,10 @@ impl<T> Session<T> {
         self.data = Some(data);
     }
 
+    pub fn get(&self) -> Option<&T> {
+        self.data.as_ref()
+    }
+
     pub fn take(&mut self) -> Option<T> {
         self.data.take()
     }
