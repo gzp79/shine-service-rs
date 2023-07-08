@@ -1,8 +1,6 @@
-use std::sync::Arc;
-
 use crate::{
     axum::session::{Session, SessionMeta},
-    service::{serde_session_key, SessionKey},
+    service::{serde_session_key, SessionKey, RedisConnectionPool},
 };
 use async_trait::async_trait;
 use axum::{
@@ -11,17 +9,16 @@ use axum::{
     http::{request::Parts, Response, StatusCode},
     Extension, RequestPartsExt,
 };
+use std::sync::Arc;
 //use axum::{http::{Request, Response}, middleware::Next};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shine_macros::RedisJsonValue;
 use uuid::Uuid;
 
-use super::RedisConnectionPool;
-
 /// Current user accessible as an Extractor from the handlers and also the
 /// stored data in the session cookie
-#[derive(Clone, Debug, Serialize, Deserialize, RedisJsonValue)]
+#[derive(Clone, Debug, Hash, Serialize, Deserialize, RedisJsonValue)]
 pub struct CurrentUser {
     /// Indicates if this information confirms to the UserSessionValidator configuration.
     #[serde(rename = "a")]
@@ -57,9 +54,9 @@ where
             .take();
         log::info!("{:#?}", user_session);
 
-        if let Some(mut current_user) = user_session {
-            validator.validate(&mut current_user).await?;
-            Ok(current_user)
+        if let Some(mut user) = user_session {
+            validator.validate(&mut user).await?;
+            Ok(user)
         } else {
             let response = Response::builder()
                 .status(StatusCode::UNAUTHORIZED)
@@ -87,8 +84,8 @@ impl UserSessionValidator {
         Extension(Arc::new(self))
     }
 
-    pub async fn validate(&self, current_user: &mut CurrentUser) -> Result<(), Response<Body>> {
-        current_user.is_authentic = false;
+    pub async fn validate(&self, user: &mut CurrentUser) -> Result<(), Response<Body>> {
+        user.is_authentic = false;
         // todo: check the in memory lru for the (user_id,key)
         //  if not found check the redis cache
         Ok(())

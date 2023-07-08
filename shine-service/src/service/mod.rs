@@ -13,3 +13,4 @@ pub mod cacerts;
 
 pub const APP_NAME: &str = "Scytta";
 pub const DOMAIN_NAME: &str = "scytta.com";
+pub const API_SUBDOMAIN: &str = "cloud";
