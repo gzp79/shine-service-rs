@@ -1,7 +1,4 @@
-use crate::{
-    axum::session::{Session, SessionMeta},
-    service::{serde_session_key, SessionKey, RedisConnectionPool},
-};
+use crate::service::{serde_session_key, RedisConnectionPool, SessionKey};
 use async_trait::async_trait;
 use axum::{
     body::Body,
@@ -9,20 +6,33 @@ use axum::{
     http::{request::Parts, Response, StatusCode},
     Extension, RequestPartsExt,
 };
-use std::sync::Arc;
-//use axum::{http::{Request, Response}, middleware::Next};
+use axum_extra::extract::{cookie::Key, SignedCookieJar};
+use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shine_macros::RedisJsonValue;
+use std::sync::Arc;
+use thiserror::Error as ThisError;
 use uuid::Uuid;
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+pub enum CurrentUserAuthenticity {
+    #[serde(rename = "a")]
+    Authentic,
+    #[serde(rename = "c")]
+    Cached,
+    #[serde(rename = "n")]
+    NotValidate,
+}
 
 /// Current user accessible as an Extractor from the handlers and also the
 /// stored data in the session cookie
 #[derive(Clone, Debug, Hash, Serialize, Deserialize, RedisJsonValue)]
 pub struct CurrentUser {
-    /// Indicates if this information confirms to the UserSessionValidator configuration.
+    /// Indicates if this information confirms to the UserSessionValidator.
+    /// If validator is skipped (for example in AuthSession handler in the identity service), it defaults to false.
     #[serde(rename = "a")]
-    pub is_authentic: bool,
+    pub authenticity: CurrentUserAuthenticity,
     #[serde(rename = "id")]
     pub user_id: Uuid,
     #[serde(rename = "k", with = "serde_session_key")]
@@ -47,14 +57,12 @@ where
             .await
             .expect("Missing UserSessionValidator extension");
 
-        let user_session = parts
-            .extract::<Session<CurrentUser>>()
-            .await
-            .expect("Missing SessionMeta extension")
-            .take();
-        log::info!("{:#?}", user_session);
+        let jar = SignedCookieJar::from_headers(&parts.headers, validator.cookie_secret.clone());
+        let user = jar
+            .get(&validator.cookie_name)
+            .and_then(|cookie| serde_json::from_str::<CurrentUser>(cookie.value()).ok());
 
-        if let Some(mut user) = user_session {
+        if let Some(mut user) = user {
             validator.validate(&mut user).await?;
             Ok(user)
         } else {
@@ -67,25 +75,47 @@ where
     }
 }
 
-pub type UserSessionMeta = SessionMeta<CurrentUser>;
-pub type UserSession = Session<CurrentUser>;
+#[derive(Debug, ThisError)]
+pub enum UserSessionError {
+    #[error("Invalid session secret: {0}")]
+    InvalidSecret(String),
+}
 
 /// Add extra validation to the user session. While sessions are signed, this
 /// layer gets an up to date version from the identity service.
 pub struct UserSessionValidator {
+    cookie_name: String,
+    cookie_secret: Key,
     redis: RedisConnectionPool,
 }
 
 impl UserSessionValidator {
-    pub fn new(redis: RedisConnectionPool) -> Self {
-        Self { redis }
+    pub fn new(
+        name_suffix: Option<&str>,
+        cookie_secret: &str,
+        redis: RedisConnectionPool,
+    ) -> Result<Self, UserSessionError> {
+        let name_suffix = name_suffix.unwrap_or_default();
+        let cookie_secret = {
+            let key = B64
+                .decode(cookie_secret)
+                .map_err(|err| UserSessionError::InvalidSecret(format!("{err}")))?;
+            Key::try_from(&key[..]).map_err(|err| UserSessionError::InvalidSecret(format!("{err}")))?
+        };
+
+        Ok(Self {
+            cookie_name: format!("sid{}", name_suffix),
+            cookie_secret,
+            redis,
+        })
     }
+
     pub fn into_layer(self) -> Extension<Arc<Self>> {
         Extension(Arc::new(self))
     }
 
     pub async fn validate(&self, user: &mut CurrentUser) -> Result<(), Response<Body>> {
-        user.is_authentic = false;
+        user.authenticity = CurrentUserAuthenticity::Authentic;
         // todo: check the in memory lru for the (user_id,key)
         //  if not found check the redis cache
         Ok(())
