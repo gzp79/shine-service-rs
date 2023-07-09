@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use azure_core::auth::TokenCredential;
 use azure_security_keyvault::SecretClient;
-use config::{AsyncSource as ConfigAsyncSource, ConfigError, Map as ConfigMap, Value as ConfigValue};
+use config::{
+    AsyncSource as ConfigAsyncSource, ConfigError, Map as ConfigMap, Value as ConfigValue, ValueKind as ConfigValueKind,
+};
 use futures::StreamExt;
 use std::sync::Arc;
 use thiserror::Error as ThisError;
@@ -42,6 +44,7 @@ impl ConfigAsyncSource for AzureKeyvaultConfigSource {
         let mut config = ConfigMap::new();
 
         log::info!("Loading secrets from {} ...", self.keyvault_url);
+        let origin = self.keyvault_url.to_string();
         let mut stream = self.client.list_secrets().into_stream();
         while let Some(response) = stream.next().await {
             let response = response.map_err(AzureKeyvaultConfigError)?;
@@ -57,7 +60,16 @@ impl ConfigAsyncSource for AzureKeyvaultConfigSource {
                         .await
                         .map_err(AzureKeyvaultConfigError)?;
                     if secret.attributes.enabled {
-                        config.insert(path, secret.value.into());
+                        let value = secret.value;
+
+                        // try to parse value, as conversion from string to a concrete type is not automatic.
+                        let value = if let Ok(parsed) = value.parse::<i64>() {
+                            ConfigValueKind::I64(parsed)
+                        } else {
+                            ConfigValueKind::String(value)
+                        };
+
+                        config.insert(path, ConfigValue::new(Some(&origin), value));
                     }
                 }
             }

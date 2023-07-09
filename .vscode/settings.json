@@ -11,6 +11,7 @@
         "chrono",
         "crey",
         "datetime",
+        "hashids",
         "keyvault",
         "keyvaults",
         "opentelemetry",

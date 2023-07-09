@@ -74,7 +74,6 @@ impl Optimus {
         let a = a as i64;
         let m = m as i64;
         let (r, x, _) = Self::extended_gcd(a, m);
-        log::info!("{r} {x}");
         assert!(r <= 1);
         ((x % m + m) % m) as u64
     }
@@ -86,9 +85,10 @@ mod test {
     use shine_test::test;
 
     #[test]
-    fn test1() {
+    fn encode_decode() {
         let test_case = [
             (309779747, 49560203, 57733611),
+            (309779747, 49560203, 57733612),
             (684934207, 1505143743, 846034763),
             (743534599, 1356791223, 1336232185),
             (54661037, 1342843941, 576322863),
@@ -96,14 +96,15 @@ mod test {
         ];
 
         for (prime, mod_inverse, random) in test_case {
+            log::info!("prime: {prime}, random: {random}");
             let opt = Optimus::new(prime, random);
 
             assert_eq!(opt.mod_inverse, mod_inverse);
 
-            for i in 0..100 {
+            for i in 0..10_000 {
                 assert_eq!(opt.decode(opt.encode(i)), i)
             }
-            for i in 134_78_000..134_780_100 {
+            for i in 13_478_000..14_479_100 {
                 assert_eq!(opt.decode(opt.encode(i)), i)
             }
         }
