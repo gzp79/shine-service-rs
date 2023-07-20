@@ -41,6 +41,8 @@ pub struct CurrentUser {
     pub session_start: DateTime<Utc>,
     #[serde(rename = "n")]
     pub name: String,
+    #[serde(rename = "r")]
+    pub roles: Vec<String>,
     //pub client_agent: String,
 }
 
