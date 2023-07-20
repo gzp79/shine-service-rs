@@ -7,7 +7,7 @@ use axum::{
     Extension, RequestPartsExt,
 };
 use axum_extra::extract::{cookie::Key, SignedCookieJar};
-use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD as B64, Engine};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shine_macros::RedisJsonValue;
