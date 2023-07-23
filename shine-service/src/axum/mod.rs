@@ -4,7 +4,7 @@ mod page;
 pub use self::page::*;
 mod problem_detail;
 pub use self::problem_detail::*;
-mod validated_json;
-pub use self::validated_json::*;
+mod validated;
+pub use self::validated::*;
 
 pub mod tracing;
