@@ -1,6 +1,6 @@
 use crate::service::{serde_session_key, RedisConnectionPool, SessionKey};
-use async_trait::async_trait;
 use axum::{
+    async_trait,
     body::Body,
     extract::FromRequestParts,
     http::{request::Parts, Response, StatusCode},

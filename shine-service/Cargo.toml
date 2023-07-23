@@ -35,6 +35,8 @@ rustls = "0.21"
 rustls-pemfile = "1.0"
 reqwest = { version = "0.11", optional = true }
 
+validator = { version = "0.16", features = ["derive"] }
+
 bb8 = "0.8"
 bb8-redis = "0.13"
 redis = { version = "0.23.0", features = ["tokio-comp", "tokio-rustls-comp"] }
