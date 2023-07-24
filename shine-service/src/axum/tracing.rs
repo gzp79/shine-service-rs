@@ -1,8 +1,8 @@
+use crate::axum::{ApiEndpoint, ApiMethod, ApiRoute};
 use axum::{
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::put,
     Json, Router,
 };
 use opentelemetry::{
@@ -22,6 +22,7 @@ use tracing_subscriber::{
     reload::{self, Handle},
     Layer, Registry,
 };
+use utoipa::openapi::OpenApi;
 
 pub use axum_tracing_opentelemetry::middleware::OtelAxumLayer;
 
@@ -221,15 +222,16 @@ impl TracingService {
         }
     }
 
-    pub fn into_router<S>(self) -> Router<S>
+    pub fn into_router<S>(self, nest_path: String, doc: Option<&mut OpenApi>) -> Router<S>
     where
         S: Clone + Send + Sync + 'static,
     {
-        let mut router = Router::new();
-        router = router.route("/config", put(reconfigure));
-
-        router.with_state(Arc::new(Data {
+        let ep = ApiEndpoint::new(ApiMethod::Put, format!("{nest_path}/config"), reconfigure)
+            .with_operation_id("ep_trace_config")
+            .with_tag("status");
+        let state = Arc::new(Data {
             reload_handle: self.reload_handle,
-        }))
+        });
+        Router::new().add_opt_api(ep, doc).with_state(state)
     }
 }
