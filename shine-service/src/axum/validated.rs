@@ -22,7 +22,7 @@ where
         let Path(data) = Path::<T>::from_request_parts(parts, state).await.map_err(|err| {
             Problem::bad_request()
                 .with_type("path_format_error")
-                .with_detail(format!("{err:?}"))
+                .with_detail(format!("{err}"))
         })?;
         data.validate().map_err(|err| {
             Problem::bad_request()
@@ -47,7 +47,7 @@ where
         let Query(data) = Query::<T>::from_request_parts(parts, state).await.map_err(|err| {
             Problem::bad_request()
                 .with_type("query_format_error")
-                .with_detail(format!("{err:?}"))
+                .with_detail(format!("{err}"))
         })?;
         data.validate().map_err(|err| {
             Problem::bad_request()
@@ -74,7 +74,7 @@ where
         let Json(data) = req.extract::<Json<J>, _>().await.map_err(|err| {
             Problem::bad_request()
                 .with_type("request_format_error")
-                .with_detail(format!("{err:?}"))
+                .with_detail(format!("{err}"))
         })?;
         data.validate().map_err(|err| {
             Problem::bad_request()

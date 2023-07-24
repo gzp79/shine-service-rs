@@ -1,10 +1,20 @@
 use axum::{
     body::HttpBody,
     handler::Handler,
+    http::StatusCode,
     routing::{delete, get, post, put},
     Router,
 };
-use utoipa::openapi::{path::OperationBuilder, OpenApi, PathItemType};
+use regex::Regex;
+use std::collections::HashMap;
+use utoipa::{
+    openapi::{
+        path::{OperationBuilder, Parameter},
+        request_body::{RequestBody, RequestBodyBuilder},
+        Content, ContentBuilder, OpenApi, PathItemType, Response, ResponseBuilder, ResponsesBuilder, Schema,
+    },
+    ToSchema,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum ApiMethod {
@@ -35,12 +45,20 @@ impl ApiPath for String {
     }
 }
 
+fn to_swagger(path: &str) -> String {
+    let re = Regex::new(r":(\w+)").unwrap();
+    re.replace_all(path, "{${1}}").to_string()
+}
+
 pub struct ApiEndpoint<S, B> {
     method: ApiMethod,
     path: String,
     operation_id: Option<String>,
     description: Option<String>,
     tags: Vec<String>,
+    parameters: Vec<Parameter>,
+    request_body: Option<RequestBody>,
+    responses: HashMap<String, Response>,
 
     router: Router<S, B>,
 }
@@ -70,10 +88,13 @@ where
 
         Self {
             method,
-            path,
+            path: to_swagger(&path),
             operation_id: None,
             description: None,
             tags: Vec::new(),
+            parameters: Vec::new(),
+            responses: HashMap::new(),
+            request_body: None,
             router,
         }
     }
@@ -92,7 +113,7 @@ where
 
     #[must_use]
     pub fn with_tags<I: IntoIterator<Item = String>>(mut self, tags: I) -> Self {
-        self.tags = tags.into_iter().collect();
+        self.tags.extend(tags.into_iter());
         self
     }
 
@@ -102,12 +123,60 @@ where
         self
     }
 
+    #[must_use]
+    pub fn with_parameter<P: Into<Parameter>>(mut self, parameter: P) -> Self {
+        self.parameters.push(parameter.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_parameters<I: IntoIterator<Item = P>, P: Into<Parameter>>(mut self, parameters: I) -> Self {
+        self.parameters
+            .extend(parameters.into_iter().map(|parameter| parameter.into()));
+        self
+    }
+
+    fn content_of<T>() -> Content
+    where
+        for<'a> T: ToSchema<'a>,
+    {
+        let schema = <T as ToSchema>::schema().1;
+        ContentBuilder::new().schema(schema).build()
+    }
+
+    #[must_use]
+    pub fn with_json_request<T>(mut self) -> Self
+    where
+        for<'a> T: ToSchema<'a>,
+    {
+        let body = RequestBodyBuilder::new()
+            .content("application/json", Self::content_of::<T>())
+            .build();
+        self.request_body = Some(body);
+        self
+    }
+
+    #[must_use]
+    pub fn with_json_response<T>(mut self, code: StatusCode) -> Self
+    where
+        for<'a> T: ToSchema<'a>,
+    {
+        let body = ResponseBuilder::new()
+            .content("application/json", Self::content_of::<T>())
+            .build();
+        self.responses.insert(code.to_string(), body);
+        self
+    }
+
     fn register(self, router: Router<S, B>, doc: Option<&mut OpenApi>) -> Router<S, B> {
         if let Some(doc) = doc {
             let operation = OperationBuilder::new()
                 .operation_id(self.operation_id)
                 .description(self.description)
                 .tags(Some(self.tags))
+                .parameters(Some(self.parameters))
+                .request_body(self.request_body)
+                .responses(ResponsesBuilder::new().responses_from_iter(self.responses).build())
                 .build();
 
             let path_item = doc.paths.paths.entry(self.path).or_default();
