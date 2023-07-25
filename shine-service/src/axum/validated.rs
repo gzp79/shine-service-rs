@@ -8,7 +8,9 @@ use axum::{
 use serde::de::DeserializeOwned;
 use validator::Validate;
 
-pub struct ValidatedPath<T>(pub T);
+pub struct ValidatedPath<T>(pub T)
+where
+    T: 'static + DeserializeOwned + Validate;
 
 #[async_trait]
 impl<S, T> FromRequestParts<S> for ValidatedPath<T>
@@ -33,7 +35,9 @@ where
     }
 }
 
-pub struct ValidatedQuery<T>(pub T);
+pub struct ValidatedQuery<T>(pub T)
+where
+    T: 'static + DeserializeOwned + Validate;
 
 #[async_trait]
 impl<S, T> FromRequestParts<S> for ValidatedQuery<T>
@@ -58,7 +62,9 @@ where
     }
 }
 
-pub struct ValidatedJson<J>(pub J);
+pub struct ValidatedJson<J>(pub J)
+where
+    J: Validate + 'static;
 
 #[async_trait]
 impl<S, B, J> FromRequest<S, B> for ValidatedJson<J>

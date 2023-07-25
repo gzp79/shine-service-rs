@@ -11,7 +11,7 @@ use utoipa::{
     openapi::{
         path::{OperationBuilder, Parameter},
         request_body::{RequestBody, RequestBodyBuilder},
-        Content, ContentBuilder, OpenApi, PathItemType, Response, ResponseBuilder, ResponsesBuilder, Schema,
+        Content, ContentBuilder, OpenApi, PathItemType, Response, ResponseBuilder, ResponsesBuilder,
     },
     ToSchema,
 };
@@ -157,14 +157,22 @@ where
     }
 
     #[must_use]
-    pub fn with_json_response<T>(mut self, code: StatusCode) -> Self
+    pub fn with_status_response<D: ToString>(mut self, code: StatusCode, description: D) -> Self {
+        let body = ResponseBuilder::new().description(description.to_string()).build();
+        self.responses.insert(code.as_str().to_string(), body);
+        self
+    }
+
+    #[must_use]
+    pub fn with_json_response<T, D: ToString>(mut self, code: StatusCode, description: D) -> Self
     where
         for<'a> T: ToSchema<'a>,
     {
         let body = ResponseBuilder::new()
             .content("application/json", Self::content_of::<T>())
+            .description(description.to_string())
             .build();
-        self.responses.insert(code.to_string(), body);
+        self.responses.insert(code.as_str().to_string(), body);
         self
     }
 
