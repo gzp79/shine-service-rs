@@ -15,6 +15,8 @@ use std::sync::Arc;
 use thiserror::Error as ThisError;
 use uuid::Uuid;
 
+use super::ClientFingerprint;
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub enum CurrentUserAuthenticity {
     #[serde(rename = "a")]
@@ -43,7 +45,8 @@ pub struct CurrentUser {
     pub name: String,
     #[serde(rename = "r")]
     pub roles: Vec<String>,
-    //pub client_agent: String,
+    #[serde(rename = "fp")]
+    pub fingerprint_hash: String,
 }
 
 #[async_trait]
@@ -59,21 +62,24 @@ where
             .await
             .expect("Missing UserSessionValidator extension");
 
+        let fingerprint = parts.extract::<ClientFingerprint>().await.unwrap();
+
         let jar = SignedCookieJar::from_headers(&parts.headers, validator.cookie_secret.clone());
         let user = jar
             .get(&validator.cookie_name)
             .and_then(|cookie| serde_json::from_str::<CurrentUser>(cookie.value()).ok());
 
         if let Some(mut user) = user {
-            validator.validate(&mut user).await?;
-            Ok(user)
-        } else {
-            let response = Response::builder()
-                .status(StatusCode::UNAUTHORIZED)
-                .body(Body::empty())
-                .unwrap();
-            Err(response)
+            if validator.validate(&mut user, fingerprint).await? {
+                return Ok(user);
+            }
         }
+
+        let response = Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Body::empty())
+            .unwrap();
+        Err(response)
     }
 }
 
@@ -116,10 +122,19 @@ impl UserSessionValidator {
         Extension(Arc::new(self))
     }
 
-    pub async fn validate(&self, user: &mut CurrentUser) -> Result<(), Response<Body>> {
+    pub async fn validate(
+        &self,
+        user: &mut CurrentUser,
+        fingerprint: ClientFingerprint,
+    ) -> Result<bool, Response<Body>> {
         user.authenticity = CurrentUserAuthenticity::Authentic;
         // todo: check the in memory lru for the (user_id,key)
         //  if not found check the redis cache
-        Ok(())
+
+        if user.fingerprint_hash != fingerprint.hash() {
+            Ok(false)
+        } else {
+            Ok(true)
+        }
     }
 }
