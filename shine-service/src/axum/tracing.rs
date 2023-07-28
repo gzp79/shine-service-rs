@@ -1,10 +1,3 @@
-use crate::axum::{ApiEndpoint, ApiMethod, ApiRoute};
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    Json, Router,
-};
 use opentelemetry::{
     sdk::{trace as otsdk, Resource},
     trace::{TraceError, Tracer},
@@ -13,7 +6,7 @@ use opentelemetry_semantic_conventions::resource as otconv;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use thiserror::Error as ThisError;
-use tracing::{log, subscriber::SetGlobalDefaultError, Dispatch, Subscriber};
+use tracing::{subscriber::SetGlobalDefaultError, Dispatch, Subscriber};
 use tracing_opentelemetry::{OpenTelemetryLayer, PreSampledTracer};
 use tracing_subscriber::{
     filter::EnvFilter,
@@ -22,12 +15,11 @@ use tracing_subscriber::{
     reload::{self, Handle},
     Layer, Registry,
 };
-use utoipa::openapi::OpenApi;
 
 pub use axum_tracing_opentelemetry::middleware::OtelAxumLayer;
 
 #[derive(Debug, ThisError)]
-pub enum TracingError {
+pub enum TracingBuildError {
     #[error(transparent)]
     SetGlobalTracing(#[from] SetGlobalDefaultError),
     #[error(transparent)]
@@ -81,44 +73,24 @@ where
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TraceConfigRequest {
-    filter: String,
+#[derive(Debug, ThisError)]
+#[error("Failed to update trace: {0}")]
+pub struct TraceReconfigureError(String);
+
+#[derive(Clone)]
+pub struct TracingManager {
+    reconfigure: Option<Arc<dyn DynHandle>>,
 }
 
-async fn reconfigure(State(data): State<Arc<Data>>, Json(format): Json<TraceConfigRequest>) -> Response {
-    log::trace!("config: {:#?}", format);
-    if let Some(reload_handle) = &data.reload_handle {
-        match reload_handle.reconfigure(format.filter) {
-            Err(err) => (StatusCode::BAD_REQUEST, err).into_response(),
-            Ok(_) => StatusCode::OK.into_response(),
-        }
-    } else {
-        (StatusCode::BAD_REQUEST, "Trace configure is disabled").into_response()
-    }
-}
-
-struct EmptyLayer;
-
-impl<S: Subscriber> Layer<S> for EmptyLayer {}
-
-struct Data {
-    reload_handle: Option<Box<dyn DynHandle>>,
-}
-
-pub struct TracingService {
-    reload_handle: Option<Box<dyn DynHandle>>,
-}
-
-impl TracingService {
+impl TracingManager {
     /// Create a Service and initialize the global tracing logger
-    pub async fn new(service_name: &str, config: &TracingConfig) -> Result<TracingService, TracingError> {
-        let mut service = TracingService { reload_handle: None };
+    pub async fn new(service_name: &str, config: &TracingConfig) -> Result<Self, TracingBuildError> {
+        let mut service = TracingManager { reconfigure: None };
         service.install_telemetry(service_name, config)?;
         Ok(service)
     }
 
-    fn set_global_logger<L>(&mut self, tracing_pipeline: L) -> Result<(), TracingError>
+    fn set_global_logger<L>(&mut self, tracing_pipeline: L) -> Result<(), TracingBuildError>
     where
         L: Into<Dispatch>,
     {
@@ -135,7 +107,7 @@ impl TracingService {
             .with_tracer(tracer)
     }
 
-    fn install_filter<T>(&mut self, config: &TracingConfig, pipeline: T) -> Result<(), TracingError>
+    fn install_filter<T>(&mut self, config: &TracingConfig, pipeline: T) -> Result<(), TracingBuildError>
     where
         T: for<'a> LookupSpan<'a> + Subscriber + Send + Sync,
     {
@@ -145,7 +117,7 @@ impl TracingService {
             // enable filtering with reconfiguration capabilities
             let (reload_env_filter, reload_handle) = reload::Layer::new(env_filter);
             let pipeline = pipeline.with(reload_env_filter);
-            self.reload_handle = Some(Box::new(reload_handle));
+            self.reconfigure = Some(Arc::new(reload_handle));
 
             self.set_global_logger(pipeline)?;
             Ok(())
@@ -158,7 +130,7 @@ impl TracingService {
         }
     }
 
-    fn install_logger<T>(&mut self, config: &TracingConfig, pipeline: T) -> Result<(), TracingError>
+    fn install_logger<T>(&mut self, config: &TracingConfig, pipeline: T) -> Result<(), TracingBuildError>
     where
         T: for<'a> LookupSpan<'a> + Subscriber + Send + Sync,
     {
@@ -171,7 +143,7 @@ impl TracingService {
         }
     }
 
-    fn install_pipeline<L>(&mut self, config: &TracingConfig, layer: L) -> Result<(), TracingError>
+    fn install_pipeline<L>(&mut self, config: &TracingConfig, layer: L) -> Result<(), TracingBuildError>
     where
         L: Layer<Registry> + Send + Sync,
     {
@@ -179,7 +151,7 @@ impl TracingService {
         self.install_logger(config, pipeline)
     }
 
-    fn install_telemetry(&mut self, service_name: &str, config: &TracingConfig) -> Result<(), TracingError> {
+    fn install_telemetry(&mut self, service_name: &str, config: &TracingConfig) -> Result<(), TracingBuildError> {
         let resource = Resource::new(vec![otconv::SERVICE_NAME.string(service_name.to_string())]);
 
         match &config.telemetry {
@@ -222,16 +194,13 @@ impl TracingService {
         }
     }
 
-    pub fn into_router<S>(self, nest_path: String, doc: Option<&mut OpenApi>) -> Router<S>
-    where
-        S: Clone + Send + Sync + 'static,
-    {
-        let ep = ApiEndpoint::new(ApiMethod::Put, format!("{nest_path}/config"), reconfigure)
-            .with_operation_id("ep_trace_config")
-            .with_tag("status");
-        let state = Arc::new(Data {
-            reload_handle: self.reload_handle,
-        });
-        Router::new().add_opt_api(ep, doc).with_state(state)
+    pub fn reconfigure(&self, filter: String) -> Result<(), TraceReconfigureError> {
+        if let Some(reconfigure) = &self.reconfigure {
+            reconfigure.reconfigure(filter).map_err(TraceReconfigureError)?
+        }
+        Ok(())
     }
 }
+
+struct EmptyLayer;
+impl<S: Subscriber> Layer<S> for EmptyLayer {}

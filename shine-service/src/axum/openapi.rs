@@ -6,15 +6,36 @@ use axum::{
     Router,
 };
 use regex::Regex;
-use std::collections::HashMap;
 use utoipa::{
     openapi::{
-        path::{OperationBuilder, Parameter},
-        request_body::{RequestBody, RequestBodyBuilder},
-        Content, ContentBuilder, OpenApi, PathItemType, Response, ResponseBuilder, ResponsesBuilder,
+        path::{OperationBuilder, Parameter, ParameterIn, PathItemBuilder},
+        request_body::RequestBodyBuilder,
+        ComponentsBuilder, Content, ContentBuilder, OpenApi, OpenApiBuilder, PathItemType, PathsBuilder, Ref, Response,
+        ResponseBuilder,
     },
-    ToSchema,
+    IntoParams, PartialSchema, ToResponse, ToSchema,
 };
+
+pub fn add_default_components(doc: &mut OpenApi) {
+    #[derive(ToSchema)]
+    #[schema(value_type = String)]
+    struct Url(String);
+
+    #[derive(ToResponse)]
+    #[allow(dead_code)]
+    struct Problem {
+        r#type: String,
+        detail: Option<serde_json::Value>,
+        instance: Option<Url>,
+    }
+
+    let components = ComponentsBuilder::new()
+        .schema_from::<Url>()
+        .response_from::<Problem>()
+        .build();
+    let new_doc = OpenApiBuilder::new().components(Some(components)).build();
+    doc.merge(new_doc);
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum ApiMethod {
@@ -53,13 +74,8 @@ fn to_swagger(path: &str) -> String {
 pub struct ApiEndpoint<S, B> {
     method: ApiMethod,
     path: String,
-    operation_id: Option<String>,
-    description: Option<String>,
-    tags: Vec<String>,
-    parameters: Vec<Parameter>,
-    request_body: Option<RequestBody>,
-    responses: HashMap<String, Response>,
-
+    pub operation: OperationBuilder,
+    pub components: ComponentsBuilder,
     router: Router<S, B>,
 }
 
@@ -89,59 +105,56 @@ where
         Self {
             method,
             path: to_swagger(&path),
-            operation_id: None,
-            description: None,
-            tags: Vec::new(),
-            parameters: Vec::new(),
-            responses: HashMap::new(),
-            request_body: None,
+            operation: OperationBuilder::new(),
+            components: ComponentsBuilder::new(),
             router,
         }
     }
 
     #[must_use]
     pub fn with_description<D: ToString>(mut self, description: D) -> Self {
-        self.description = Some(description.to_string());
+        self.operation = self.operation.description(Some(description.to_string()));
         self
     }
 
     #[must_use]
     pub fn with_tag<T: ToString>(mut self, tag: T) -> Self {
-        self.tags.push(tag.to_string());
+        self.operation = self.operation.tag(tag.to_string());
         self
     }
 
     #[must_use]
     pub fn with_tags<I: IntoIterator<Item = String>>(mut self, tags: I) -> Self {
-        self.tags.extend(tags.into_iter());
+        for tag in tags {
+            self.operation = self.operation.tag(tag.to_string());
+        }
         self
     }
 
     #[must_use]
     pub fn with_operation_id<D: ToString>(mut self, operation_id: D) -> Self {
-        self.operation_id = Some(operation_id.to_string());
+        self.operation = self.operation.operation_id(Some(operation_id.to_string()));
         self
     }
 
     #[must_use]
     pub fn with_parameter<P: Into<Parameter>>(mut self, parameter: P) -> Self {
-        self.parameters.push(parameter.into());
+        self.operation = self.operation.parameter(parameter);
         self
     }
 
     #[must_use]
-    pub fn with_parameters<I: IntoIterator<Item = P>, P: Into<Parameter>>(mut self, parameters: I) -> Self {
-        self.parameters
-            .extend(parameters.into_iter().map(|parameter| parameter.into()));
+    pub fn with_query_parameter<T: IntoParams>(mut self) -> Self {
+        let params = <T as IntoParams>::into_params(|| Some(ParameterIn::Query));
+        self.operation = self.operation.parameters(Some(params));
         self
     }
 
-    fn content_of<T>() -> Content
-    where
-        for<'a> T: ToSchema<'a>,
-    {
-        let schema = <T as ToSchema>::schema().1;
-        ContentBuilder::new().schema(schema).build()
+    #[must_use]
+    pub fn with_path_parameter<T: IntoParams>(mut self) -> Self {
+        let params = <T as IntoParams>::into_params(|| Some(ParameterIn::Path));
+        self.operation = self.operation.parameters(Some(params));
+        self
     }
 
     #[must_use]
@@ -149,46 +162,74 @@ where
     where
         for<'a> T: ToSchema<'a>,
     {
-        let body = RequestBodyBuilder::new()
-            .content("application/json", Self::content_of::<T>())
-            .build();
-        self.request_body = Some(body);
+        let (name, schema) = <T as ToSchema>::schema();
+        self.components = self.components.schema(name, schema);
+        let content = Content::new(Ref::from_schema_name(name));
+        let request = RequestBodyBuilder::new().content("application/json", content).build();
+        self.operation = self.operation.request_body(Some(request));
         self
     }
 
     #[must_use]
     pub fn with_status_response<D: ToString>(mut self, code: StatusCode, description: D) -> Self {
-        let body = ResponseBuilder::new().description(description.to_string()).build();
-        self.responses.insert(code.as_str().to_string(), body);
+        let response: Response = ResponseBuilder::new().description(description.to_string()).build();
+        self.operation = self.operation.response(code.as_str().to_string(), response);
         self
     }
 
     #[must_use]
-    pub fn with_json_response<T, D: ToString>(mut self, code: StatusCode, description: D) -> Self
+    pub fn with_schema<T>(mut self) -> Self
     where
         for<'a> T: ToSchema<'a>,
     {
-        let body = ResponseBuilder::new()
-            .content("application/json", Self::content_of::<T>())
+        let (name, schema) = <T as ToSchema>::schema();
+        self.components = self.components.schema(name, schema);
+        self
+    }
+
+    #[must_use]
+    pub fn with_json_response<T>(mut self, code: StatusCode) -> Self
+    where
+        for<'a> T: ToSchema<'a>,
+    {
+        let (name, schema) = <T as ToSchema>::schema();
+        self.components = self.components.schema(name, schema);
+        let content = ContentBuilder::new().schema(Ref::from_schema_name(name)).build();
+        let response = ResponseBuilder::new().content("application/json", content).build();
+        self.operation = self.operation.response(code.as_str().to_string(), response);
+        self
+    }
+
+    #[must_use]
+    pub fn with_page_response<D: ToString>(mut self, description: D) -> Self {
+        let content = ContentBuilder::new().schema(String::schema()).build();
+        let response = ResponseBuilder::new()
+            .content("text/plan", content)
             .description(description.to_string())
             .build();
-        self.responses.insert(code.as_str().to_string(), body);
+        self.operation = self.operation.response(StatusCode::OK.as_str().to_string(), response);
+        self
+    }
+
+    #[must_use]
+    pub fn with_problem_response(mut self, codes: &[StatusCode]) -> Self {
+        for code in codes {
+            self.operation = self
+                .operation
+                .response(code.as_str().to_string(), Ref::from_response_name("Problem"));
+        }
         self
     }
 
     fn register(self, router: Router<S, B>, doc: Option<&mut OpenApi>) -> Router<S, B> {
         if let Some(doc) = doc {
-            let operation = OperationBuilder::new()
-                .operation_id(self.operation_id)
-                .description(self.description)
-                .tags(Some(self.tags))
-                .parameters(Some(self.parameters))
-                .request_body(self.request_body)
-                .responses(ResponsesBuilder::new().responses_from_iter(self.responses).build())
-                .build();
+            let components = self.components.build();
+            let operation = self.operation.build();
+            let path_item = PathItemBuilder::new().operation(self.method.into(), operation).build();
+            let paths = PathsBuilder::new().path(self.path, path_item).build();
 
-            let path_item = doc.paths.paths.entry(self.path).or_default();
-            path_item.operations.insert(self.method.into(), operation);
+            let new_doc = OpenApiBuilder::new().components(Some(components)).paths(paths).build();
+            doc.merge(new_doc);
         }
 
         router.merge(self.router)
