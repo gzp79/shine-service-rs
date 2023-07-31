@@ -14,5 +14,11 @@ pub async fn create_redis_pool(cns: &str) -> Result<RedisConnectionPool, RedisCo
         .build(redis_manager)
         .await?;
 
+    {
+        let client = &mut *redis.get().await?;
+        let pong: String = redis::cmd("PING").query_async(client).await?;
+        log::info!("Redis pong: {pong}");
+    }
+
     Ok(redis)
 }

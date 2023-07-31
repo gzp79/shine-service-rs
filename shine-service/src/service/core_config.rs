@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::{env, path::Path, sync::Arc};
 
 pub const DEFAULT_CONFIG_FILE: &str = "server_config.json";
+pub const DEFAULT_DEV_CONFIG_FILE: &str = "server_config.dev.json";
 pub const DEFAULT_LOCAL_CONFIG_FILE: &str = "temp/server_config.json";
 
 /// Partial configuration required for early setup. These parameters shall not be altered
@@ -65,6 +66,9 @@ impl CoreConfig {
             }
         }
 
+        if Path::new(DEFAULT_DEV_CONFIG_FILE).exists() {
+            builder = builder.add_source(File::from(Path::new(DEFAULT_DEV_CONFIG_FILE)));
+        }
         if Path::new(DEFAULT_LOCAL_CONFIG_FILE).exists() {
             builder = builder.add_source(File::from(Path::new(DEFAULT_LOCAL_CONFIG_FILE)));
         }
