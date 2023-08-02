@@ -9,21 +9,20 @@ pub const DEFAULT_CONFIG_FILE: &str = "server_config.json";
 pub const DEFAULT_DEV_CONFIG_FILE: &str = "server_config.dev.json";
 pub const DEFAULT_LOCAL_CONFIG_FILE: &str = "temp/server_config.json";
 
-/// Partial configuration required for early setup. These parameters shall not be altered
-/// in the other layers.
+/// Partial configuration required for early setup.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreConfig {
+    pub stage: String,
     pub version: String,
-    pub shared_keyvault: Option<String>,
-    pub private_keyvault: Option<String>,
+    pub layers: Vec<String>,
 }
 
 impl CoreConfig {
-    pub fn new() -> Result<CoreConfig, ConfigError> {
+    pub fn new(stage: &str) -> Result<Self, ConfigError> {
         let builder = Config::builder()
-            .add_source(File::from(Path::new(DEFAULT_CONFIG_FILE)))
-            .add_source(Environment::default().separator("--"));
+            .add_source(File::from(Path::new(&format!("server_config.{}.json", stage))))
+            .add_source(File::from(Path::new("server_version.json")));
 
         let s = builder.build()?;
         let cfg: CoreConfig = s.try_deserialize()?;
@@ -34,45 +33,85 @@ impl CoreConfig {
 
     pub fn create_config_builder(&self) -> Result<ConfigBuilder<AsyncState>, ConfigError> {
         let mut builder = ConfigBuilder::<AsyncState>::default();
-        builder = builder.add_source(File::from(Path::new(DEFAULT_CONFIG_FILE)));
 
-        {
-            let azure_credentials: Arc<dyn TokenCredential> = if env::var("AZURE_TENANT_ID").is_ok() {
-                log::info!("Getting azure credentials through environment...");
-                Arc::new(EnvironmentCredential::default())
-            } else {
-                log::info!("Getting azure credentials through azure cli...");
-                Arc::new(AzureCliCredential::new())
-            };
+        // make sure self is added
+        let mut layers = self.layers.clone();
+        if !layers.iter().any(|x| x == "self") {
+            layers.push("self".into());
+        }
 
-            log::info!("Checking shared keyvault...");
-            let shared_keyvault = self
-                .shared_keyvault
-                .as_ref()
-                .map(|uri| AzureKeyvaultConfigSource::new(azure_credentials.clone(), uri))
-                .transpose()?;
-            if let Some(shared_keyvault) = shared_keyvault {
-                builder = builder.add_async_source(shared_keyvault)
+        for layer in layers {
+            let mut tokens = layer.splitn(2, "://");
+            let schema = tokens.next().ok_or(ConfigError::FileParse {
+                uri: Some(layer.to_owned()),
+                cause: "Invalid config layer url".into(),
+            })?;
+
+            let path = tokens.next();
+
+            let mut azure_credentials: Option<Arc<dyn TokenCredential>> = None;
+
+            match schema {
+                "file" => {
+                    let path = path.ok_or(ConfigError::FileParse {
+                        uri: Some(layer.to_owned()),
+                        cause: "Missing file path".into(),
+                    })?;
+                    builder = builder.add_source(File::from(Path::new(path)));
+                }
+                "file?" => {
+                    let path = path.ok_or(ConfigError::FileParse {
+                        uri: Some(layer.to_owned()),
+                        cause: "Missing file path".into(),
+                    })?;
+
+                    if Path::new(path).exists() {
+                        builder = builder.add_source(File::from(Path::new(path)));
+                    }
+                }
+                "self" => {
+                    if path.is_some() {
+                        return Err(ConfigError::FileParse {
+                            uri: Some(layer.to_owned()),
+                            cause: "Missing file path".into(),
+                        });
+                    }
+                    builder = builder.add_source(File::from(Path::new(&format!("server_config.{}.json", self.stage))));
+                }
+                "azk" => {
+                    let path = path.ok_or(ConfigError::FileParse {
+                        uri: Some(layer.to_owned()),
+                        cause: "Missing azure keyvault location".into(),
+                    })?;
+                    if azure_credentials.is_none() {
+                        azure_credentials = if env::var("AZURE_TENANT_ID").is_ok() {
+                            log::info!("Getting azure credentials through environment...");
+                            Some(Arc::new(EnvironmentCredential::default()))
+                        } else {
+                            log::info!("Getting azure credentials through azure cli...");
+                            Some(Arc::new(AzureCliCredential::new()))
+                        };
+                    }
+                    let azure_credentials = azure_credentials.clone().unwrap();
+                    let keyvault_url = format!("https://{}", path);
+                    let keyvault = AzureKeyvaultConfigSource::new(azure_credentials.clone(), &keyvault_url)?;
+                    builder = builder.add_async_source(keyvault);
+                }
+                "environment" => {
+                    builder = builder.add_source(Environment::default().separator("--"));
+                }
+                _ => {
+                    return Err(ConfigError::FileParse {
+                        uri: Some(layer.to_owned()),
+                        cause: format!("Unsupported schema, {schema}").into(),
+                    })
+                }
             }
-
-            log::info!("Checking private keyvault...");
-            let private_keyvault = self
-                .private_keyvault
-                .as_ref()
-                .map(|uri| AzureKeyvaultConfigSource::new(azure_credentials.clone(), uri))
-                .transpose()?;
-            if let Some(private_keyvault) = private_keyvault {
-                builder = builder.add_async_source(private_keyvault)
-            }
         }
 
-        if Path::new(DEFAULT_DEV_CONFIG_FILE).exists() {
-            builder = builder.add_source(File::from(Path::new(DEFAULT_DEV_CONFIG_FILE)));
-        }
-        if Path::new(DEFAULT_LOCAL_CONFIG_FILE).exists() {
-            builder = builder.add_source(File::from(Path::new(DEFAULT_LOCAL_CONFIG_FILE)));
-        }
-        builder = builder.add_source(Environment::default().separator("--"));
+        builder = builder
+            //.set_override("stage", self.stage.clone())?
+            .set_override("version", self.version.clone())?;
 
         Ok(builder)
     }
