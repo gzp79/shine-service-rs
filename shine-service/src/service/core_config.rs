@@ -15,7 +15,8 @@ pub const DEFAULT_LOCAL_CONFIG_FILE: &str = "temp/server_config.json";
 pub struct CoreConfig {
     pub stage: String,
     pub version: String,
-    pub layers: Vec<String>,
+    pub before_layers: Vec<String>,
+    pub after_layers: Vec<String>,
 }
 
 impl CoreConfig {
@@ -34,34 +35,54 @@ impl CoreConfig {
     pub fn create_config_builder(&self) -> Result<ConfigBuilder<AsyncState>, ConfigError> {
         let mut builder = ConfigBuilder::<AsyncState>::default();
 
-        // make sure self is added
-        let mut layers = self.layers.clone();
-        if !layers.iter().any(|x| x == "self") {
-            layers.push("self".into());
+        enum Layer<'a> {
+            Base,
+            Environment,
+            Config(&'a str, &'a str, Option<&'a str>),
+        }
+        impl<'a> Layer<'a> {
+            fn from_layer(layer: &'a str) -> Result<Self, ConfigError> {
+                if layer == "environment" {
+                    Ok(Layer::Environment)
+                } else {
+                    let mut tokens = layer.splitn(2, "://");
+                    let schema = tokens.next().ok_or(ConfigError::FileParse {
+                        uri: Some(layer.to_owned()),
+                        cause: "Invalid config layer".into(),
+                    })?;
+                    Ok(Self::Config(schema, layer, tokens.next()))
+                }
+            }
         }
 
+        let mut layers = Vec::with_capacity(self.before_layers.len() + self.after_layers.len() + 1);
+        for l in self.before_layers.iter().map(|x| Layer::from_layer(x.as_str())) {
+            layers.push(l?);
+        }
+        layers.push(Layer::Base);
+        for l in self.after_layers.iter().map(|x| Layer::from_layer(x.as_str())) {
+            layers.push(l?);
+        }
+
+        let mut azure_credentials: Option<Arc<dyn TokenCredential>> = None;
         for layer in layers {
-            let mut tokens = layer.splitn(2, "://");
-            let schema = tokens.next().ok_or(ConfigError::FileParse {
-                uri: Some(layer.to_owned()),
-                cause: "Invalid config layer url".into(),
-            })?;
-
-            let path = tokens.next();
-
-            let mut azure_credentials: Option<Arc<dyn TokenCredential>> = None;
-
-            match schema {
-                "file" => {
+            match layer {
+                Layer::Base => {
+                    builder = builder.add_source(File::from(Path::new(&format!("server_config.{}.json", self.stage))));
+                }
+                Layer::Environment => {
+                    builder = builder.add_source(Environment::default().separator("--"));
+                }
+                Layer::Config("file", url, path) => {
                     let path = path.ok_or(ConfigError::FileParse {
-                        uri: Some(layer.to_owned()),
+                        uri: Some(url.to_owned()),
                         cause: "Missing file path".into(),
                     })?;
                     builder = builder.add_source(File::from(Path::new(path)));
                 }
-                "file?" => {
+                Layer::Config("file?", url, path) => {
                     let path = path.ok_or(ConfigError::FileParse {
-                        uri: Some(layer.to_owned()),
+                        uri: Some(url.to_owned()),
                         cause: "Missing file path".into(),
                     })?;
 
@@ -69,18 +90,9 @@ impl CoreConfig {
                         builder = builder.add_source(File::from(Path::new(path)));
                     }
                 }
-                "self" => {
-                    if path.is_some() {
-                        return Err(ConfigError::FileParse {
-                            uri: Some(layer.to_owned()),
-                            cause: "Missing file path".into(),
-                        });
-                    }
-                    builder = builder.add_source(File::from(Path::new(&format!("server_config.{}.json", self.stage))));
-                }
-                "azk" => {
+                Layer::Config("azk", url, path) => {
                     let path = path.ok_or(ConfigError::FileParse {
-                        uri: Some(layer.to_owned()),
+                        uri: Some(url.to_owned()),
                         cause: "Missing azure keyvault location".into(),
                     })?;
                     if azure_credentials.is_none() {
@@ -97,12 +109,9 @@ impl CoreConfig {
                     let keyvault = AzureKeyvaultConfigSource::new(azure_credentials.clone(), &keyvault_url)?;
                     builder = builder.add_async_source(keyvault);
                 }
-                "environment" => {
-                    builder = builder.add_source(Environment::default().separator("--"));
-                }
-                _ => {
+                Layer::Config(schema, url, _) => {
                     return Err(ConfigError::FileParse {
-                        uri: Some(layer.to_owned()),
+                        uri: Some(url.to_owned()),
                         cause: format!("Unsupported schema, {schema}").into(),
                     })
                 }
