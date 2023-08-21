@@ -1,4 +1,4 @@
-use crate::axum::Problem;
+use crate::{axum::Problem, utils::serde_string};
 use axum::{
     async_trait,
     extract::{
@@ -9,17 +9,20 @@ use axum::{
     response::{IntoResponse, Response},
     Json, RequestExt,
 };
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error as ThisError;
 use validator::{Validate, ValidationErrors};
 
-#[derive(Debug, ThisError)]
+#[derive(Debug, ThisError, Serialize)]
 pub enum ValidationError {
     #[error("Path could not be parsed for input")]
+    #[serde(with = "serde_string")]
     PathFormat(PathRejection),
     #[error("Query could not be parsed for input")]
+    #[serde(with = "serde_string")]
     QueryFormat(QueryRejection),
     #[error("Body could not be parsed for input")]
+    #[serde(with = "serde_string")]
     JsonFormat(JsonRejection),
     #[error("Input constraint violated")]
     Constraint(ValidationErrors),

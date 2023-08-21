@@ -128,8 +128,9 @@ impl UserSessionValidator {
         fingerprint: ClientFingerprint,
     ) -> Result<bool, Response<Body>> {
         user.authenticity = CurrentUserAuthenticity::Authentic;
-        // todo: check the in memory lru for the (user_id,key)
-        //  if not found check the redis cache
+        // issue#12: 
+        // check the in memory lru for the (user_id,key)
+        // check the redis cache
 
         if user.fingerprint_hash != fingerprint.hash() {
             Ok(false)

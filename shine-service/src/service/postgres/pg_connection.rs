@@ -246,8 +246,8 @@ pub type PGStatement = tokio_postgres::Statement;
 pub type PGConvertError = Box<dyn std::error::Error + Sync + Send>;
 
 pub async fn create_postgres_pool(cns: &str) -> Result<PGConnectionPool, PGConnectionError> {
-    //todo: make tls optional (from feature as tls is a property of the connection type, see NoTls).
-    //      It can be disabled when running in cloud on a virtual network.
+    //todo: make tls optional as can be disabled when running in cloud on a virtual network.
+    //      The implementation may require a rust feature flag, see NoTls.
     let tls_config = rustls::ClientConfig::builder()
         .with_safe_defaults()
         .with_root_certificates(cacerts::get_root_cert_store())
