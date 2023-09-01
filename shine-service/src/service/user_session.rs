@@ -47,6 +47,8 @@ pub struct CurrentUser {
     pub roles: Vec<String>,
     #[serde(rename = "fp")]
     pub fingerprint_hash: String,
+    #[serde(rename = "v")]
+    pub version: i32,
 }
 
 #[async_trait]
