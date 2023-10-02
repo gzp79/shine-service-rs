@@ -13,6 +13,7 @@ use axum_extra::extract::{cookie::Key, SignedCookieJar};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD as B64, Engine};
 use chrono::{DateTime, Utc};
 use redis::AsyncCommands;
+use ring::digest;
 use serde::{Deserialize, Serialize};
 use shine_macros::RedisJsonValue;
 use std::{ops, sync::Arc};
@@ -217,6 +218,8 @@ impl UserSessionValidator {
         Extension(Arc::new(self))
     }
 
+    /// This is a duplicated and minimized version of session handling from the identity service
+    /// Introduce breaking change with great care as that can also break all the service.
     async fn refresh_session_data(&self, user: &mut CurrentUser) -> Result<(), UserSessionError> {
         #[derive(Serialize, Deserialize, Debug, RedisJsonValue)]
         #[serde(rename_all = "camelCase")]
@@ -234,11 +237,14 @@ impl UserSessionValidator {
         }
 
         let (sentinel_key, key) = {
+            let key_hash = digest::digest(&digest::SHA256, user.key.as_bytes());
+            let key_hash = hex::encode(key_hash);            
+
             let prefix = format!(
                 "{}session:{}:{}",
                 self.key_prefix,
                 user.user_id.as_simple(),
-                user.key.to_hex()
+                key_hash
             );
             let sentinel_key = format!("{prefix}:openness");
             let key = format!("{prefix}:data");
