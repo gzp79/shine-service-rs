@@ -28,15 +28,20 @@ impl SessionKey {
     }
 
     /// Create from a single string usually used on the API.
-    pub fn from_hex(hey_key: &str) -> Result<Self, SessionKeyError> {
+    pub fn from_hex(hex_key: &str) -> Result<Self, SessionKeyError> {
         let mut raw = [0_u8; 16];
-        hex::decode_to_slice(hey_key, &mut raw)?;
+        hex::decode_to_slice(hex_key, &mut raw)?;
         Ok(Self(raw))
     }
 
     /// Generate a unique session key.
     pub fn to_hex(self) -> String {
         hex::encode(self.0)
+    }
+
+    /// Return the raw key as bytes
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
     }
 }
 
