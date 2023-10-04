@@ -238,14 +238,9 @@ impl UserSessionValidator {
 
         let (sentinel_key, key) = {
             let key_hash = digest::digest(&digest::SHA256, user.key.as_bytes());
-            let key_hash = hex::encode(key_hash);            
+            let key_hash = hex::encode(key_hash);
 
-            let prefix = format!(
-                "{}session:{}:{}",
-                self.key_prefix,
-                user.user_id.as_simple(),
-                key_hash
-            );
+            let prefix = format!("{}session:{}:{}", self.key_prefix, user.user_id.as_simple(), key_hash);
             let sentinel_key = format!("{prefix}:openness");
             let key = format!("{prefix}:data");
             (sentinel_key, key)
