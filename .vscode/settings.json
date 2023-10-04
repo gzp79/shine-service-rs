@@ -22,6 +22,7 @@
         "QUIC",
         "reqwest",
         "rustls",
+        "semcov",
         "serde",
         "signum",
         "thiserror",

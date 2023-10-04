@@ -1,10 +1,14 @@
 use opentelemetry::{
-    sdk::{trace as otsdk, Resource},
-    trace::{TraceError, Tracer},
+    global,
+    sdk::{
+        trace::{self as otsdk, TracerProvider},
+        Resource,
+    },
+    trace::{TraceError, Tracer, TracerProvider as _},
 };
-use opentelemetry_semantic_conventions::resource as otconv;
+use opentelemetry_semantic_conventions as otconv;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{error::Error as StdError, sync::Arc};
 use thiserror::Error as ThisError;
 use tracing::{subscriber::SetGlobalDefaultError, Dispatch, Subscriber};
 use tracing_opentelemetry::{OpenTelemetryLayer, PreSampledTracer};
@@ -22,6 +26,9 @@ pub use axum_tracing_opentelemetry::middleware::OtelAxumLayer;
 pub enum TracingBuildError {
     #[error(transparent)]
     SetGlobalTracing(#[from] SetGlobalDefaultError),
+    #[cfg(feature = "ot_app_insight")]
+    #[error(transparent)]
+    AppInsightConfigError(Box<dyn StdError + Send + Sync + 'static>),
     #[error(transparent)]
     TraceError(#[from] TraceError),
 }
@@ -152,17 +159,26 @@ impl TracingManager {
     }
 
     fn install_telemetry(&mut self, service_name: &str, config: &TracingConfig) -> Result<(), TracingBuildError> {
-        let resource = Resource::new(vec![otconv::SERVICE_NAME.string(service_name.to_string())]);
+        let resource = Resource::new(vec![otconv::resource::SERVICE_NAME.string(service_name.to_string())]);
 
         match &config.telemetry {
             Telemetry::StdOut => {
-                let tracer = opentelemetry::sdk::export::trace::stdout::PipelineBuilder::default()
-                    .with_trace_config(
+                let exporter = opentelemetry_stdout::SpanExporter::default();
+                let provider = TracerProvider::builder()
+                    .with_simple_exporter(exporter)
+                    .with_config(
                         otsdk::config()
                             .with_resource(resource)
                             .with_sampler(otsdk::Sampler::AlwaysOn),
                     )
-                    .install_simple();
+                    .build();
+                let tracer = provider.versioned_tracer(
+                    "opentelemetry-stdout",
+                    Some(env!("CARGO_PKG_VERSION")),
+                    Some(otconv::SCHEMA_URL),
+                    None,
+                );
+                let _ = global::set_tracer_provider(provider);
                 self.install_pipeline(config, Self::ot_layer(tracer))
             }
             #[cfg(feature = "ot_jaeger")]
@@ -183,11 +199,14 @@ impl TracingManager {
             }
             #[cfg(feature = "ot_app_insight")]
             Telemetry::AppInsight { instrumentation_key } => {
-                let tracer = opentelemetry_application_insights::new_pipeline(instrumentation_key.clone())
-                    .with_trace_config(otsdk::config().with_resource(resource))
-                    .with_service_name(service_name.to_string())
-                    .with_client(reqwest::Client::new())
-                    .install_batch(opentelemetry::runtime::Tokio);
+                let tracer = opentelemetry_application_insights::new_pipeline_from_connection_string(
+                    instrumentation_key.clone(),
+                )
+                .map_err(TracingBuildError::AppInsightConfigError)?
+                .with_trace_config(otsdk::config().with_resource(resource))
+                .with_service_name(service_name.to_string())
+                .with_client(reqwest::Client::new())
+                .install_batch(opentelemetry::runtime::Tokio);
                 self.install_pipeline(config, Self::ot_layer(tracer))
             }
             Telemetry::None => self.install_pipeline(config, EmptyLayer),

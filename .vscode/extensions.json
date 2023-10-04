@@ -1,14 +1,10 @@
 {
     "recommendations": [
         "humao.rest-client",
-        "rust-lang.rust-analyzer",      
+        "rust-lang.rust-analyzer",
         "serayuzgur.crates",
-
         "usernamehw.errorlens",
-        "shd101wyy.markdown-preview-enhanced",        
-
-        "adamvoss.vscode-languagetool",
-        "adamvoss.vscode-languagetool-en",
-		"streetsidesoftware.code-spell-checker",
+        "shd101wyy.markdown-preview-enhanced",
+        "streetsidesoftware.code-spell-checker"
     ]
 }
