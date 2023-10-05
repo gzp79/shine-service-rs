@@ -218,7 +218,7 @@ impl<'a> PGClientOrTransaction<'a> {
 impl<'a> From<&'a PGPooledConnection<'a>> for PGClientOrTransaction<'a> {
     #[inline]
     fn from(client: &'a PGPooledConnection<'a>) -> Self {
-        Self::Client(&**client)
+        Self::Client(client)
     }
 }
 

@@ -1,9 +1,7 @@
 [package]
 name = "shine-service"
 version = "0.1.0"
-authors = ["gzp <z.p.gaal@google.com>"]
 edition = "2021"
-
 
 [features]
 default = ["ot_jaeger", "ot_zipkin", "ot_app_insight"]
