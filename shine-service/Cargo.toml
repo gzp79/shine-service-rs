@@ -30,7 +30,8 @@ regex = "1.9"
 futures = "0.3"
 async-trait = "0.1"
 tokio = {version = "1.27", features = ["macros", "rt-multi-thread", "signal"] }
-rustls = "0.21"
+rustls = "0.21" 
+rustls-native-certs = "0.6"
 rustls-pemfile = "1.0"
 reqwest = { version = "0.11", optional = true }
 

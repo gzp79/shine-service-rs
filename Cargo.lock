@@ -2418,6 +2418,7 @@ dependencies = [
  "reqwest",
  "ring 0.17.0",
  "rustls",
+ "rustls-native-certs",
  "rustls-pemfile",
  "serde",
  "serde_json",

@@ -2,11 +2,13 @@ use crate::service::cacerts;
 use async_trait::async_trait;
 use bb8::{ManageConnection, Pool as BB8Pool, PooledConnection, RunError};
 use bb8_postgres::PostgresConnectionManager;
+use std::io;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::{collections::HashMap, ops::DerefMut};
+use thiserror::Error as ThisError;
 use tokio::sync::RwLock;
 use tokio_postgres::types::ToSql;
 use tokio_postgres::{Client as PGClient, Config as PGConfig, Row, Statement, ToStatement, Transaction};
@@ -245,12 +247,19 @@ pub type PGStatement = tokio_postgres::Statement;
 /// A shorthand used for the return types in the ToSql and FromSql implementations.
 pub type PGConvertError = Box<dyn std::error::Error + Sync + Send>;
 
-pub async fn create_postgres_pool(cns: &str) -> Result<PGConnectionPool, PGConnectionError> {
-    //todo: make tls optional as can be disabled when running in cloud on a virtual network.
-    //      The implementation may require a rust feature flag, see NoTls.
+#[derive(ThisError, Debug)]
+pub enum PGCreatePoolError {
+    #[error(transparent)]
+    PgError(#[from] PGError),
+    #[error("Certificate load error")]
+    CertError(#[source] io::Error),
+}
+
+pub async fn create_postgres_pool(cns: &str) -> Result<PGConnectionPool, PGCreatePoolError> {
+    let certs = cacerts::get_root_cert_store().map_err(PGCreatePoolError::CertError)?;
     let tls_config = rustls::ClientConfig::builder()
         .with_safe_defaults()
-        .with_root_certificates(cacerts::get_root_cert_store())
+        .with_root_certificates(certs)
         .with_no_client_auth();
     let tls = MakeRustlsConnect::new(tls_config);
 
