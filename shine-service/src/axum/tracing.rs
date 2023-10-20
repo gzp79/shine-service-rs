@@ -13,7 +13,7 @@ use thiserror::Error as ThisError;
 use tracing::{subscriber::SetGlobalDefaultError, Dispatch, Subscriber};
 use tracing_opentelemetry::{OpenTelemetryLayer, PreSampledTracer};
 use tracing_subscriber::{
-    filter::EnvFilter,
+    filter::{EnvFilter, ParseError},
     layer::SubscriberExt,
     registry::LookupSpan,
     reload::{self, Handle},
@@ -26,6 +26,8 @@ pub use axum_tracing_opentelemetry::middleware::OtelAxumLayer;
 pub enum TracingBuildError {
     #[error(transparent)]
     SetGlobalTracing(#[from] SetGlobalDefaultError),
+    #[error("Default log format could not be parsed")]
+    DefaultLogError(#[from] ParseError),
     #[cfg(feature = "ot_app_insight")]
     #[error(transparent)]
     AppInsightConfigError(Box<dyn StdError + Send + Sync + 'static>),
@@ -62,6 +64,7 @@ pub struct TracingConfig {
     allow_reconfigure: bool,
     enable_console_log: bool,
     telemetry: Telemetry,
+    default_level: Option<String>,
 }
 
 trait DynHandle: Send + Sync {
@@ -118,7 +121,11 @@ impl TracingManager {
     where
         T: for<'a> LookupSpan<'a> + Subscriber + Send + Sync,
     {
-        let env_filter = EnvFilter::from_default_env();
+        let env_filter = if let Some(default_level) = &config.default_level {
+            EnvFilter::builder().parse(default_level)?
+        } else {
+            EnvFilter::from_default_env()
+        };
 
         if config.allow_reconfigure {
             // enable filtering with reconfiguration capabilities
