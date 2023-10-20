@@ -2,7 +2,7 @@ use axum::{
     body::HttpBody,
     handler::Handler,
     http::StatusCode,
-    routing::{delete, get, post, put},
+    routing::{delete, get, post, put, MethodRouter},
     Router,
 };
 use regex::Regex;
@@ -76,7 +76,7 @@ pub struct ApiEndpoint<S, B> {
     path: String,
     pub operation: OperationBuilder,
     pub components: ComponentsBuilder,
-    router: Router<S, B>,
+    router: MethodRouter<S, B>,
 }
 
 impl<S, B> ApiEndpoint<S, B>
@@ -92,19 +92,16 @@ where
     {
         let path = path.path();
 
-        let router = Router::new().route(
-            &path,
-            match method {
-                ApiMethod::Get => get(action),
-                ApiMethod::Post => post(action),
-                ApiMethod::Put => put(action),
-                ApiMethod::Delete => delete(action),
-            },
-        );
+        let router = match method {
+            ApiMethod::Get => get(action),
+            ApiMethod::Post => post(action),
+            ApiMethod::Put => put(action),
+            ApiMethod::Delete => delete(action),
+        };
 
         Self {
             method,
-            path: to_swagger(&path),
+            path,
             operation: OperationBuilder::new(),
             components: ComponentsBuilder::new(),
             router,
@@ -226,13 +223,13 @@ where
             let components = self.components.build();
             let operation = self.operation.build();
             let path_item = PathItemBuilder::new().operation(self.method.into(), operation).build();
-            let paths = PathsBuilder::new().path(self.path, path_item).build();
+            let paths = PathsBuilder::new().path(to_swagger(&self.path), path_item).build();
 
             let new_doc = OpenApiBuilder::new().components(Some(components)).paths(paths).build();
             doc.merge(new_doc);
         }
 
-        router.merge(self.router)
+        router.route(&self.path, self.router)
     }
 }
 
