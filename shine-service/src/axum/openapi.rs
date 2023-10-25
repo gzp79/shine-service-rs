@@ -6,11 +6,12 @@ use axum::{
     Router,
 };
 use regex::Regex;
+use std::collections::btree_map::Entry;
 use utoipa::{
     openapi::{
         path::{OperationBuilder, Parameter, ParameterIn, PathItemBuilder},
         request_body::RequestBodyBuilder,
-        ComponentsBuilder, Content, ContentBuilder, OpenApi, OpenApiBuilder, PathItemType, PathsBuilder, Ref, Response,
+        ComponentsBuilder, Content, ContentBuilder, OpenApi, OpenApiBuilder, PathItemType, Ref, Response,
         ResponseBuilder,
     },
     IntoParams, PartialSchema, ToResponse, ToSchema,
@@ -220,13 +221,28 @@ where
 
     fn register(self, router: Router<S, B>, doc: Option<&mut OpenApi>) -> Router<S, B> {
         if let Some(doc) = doc {
+            
             let components = self.components.build();
             let operation = self.operation.build();
-            let path_item = PathItemBuilder::new().operation(self.method.into(), operation).build();
-            let paths = PathsBuilder::new().path(to_swagger(&self.path), path_item).build();
-
-            let new_doc = OpenApiBuilder::new().components(Some(components)).paths(paths).build();
-            doc.merge(new_doc);
+            let method = self.method.into();
+            
+            let components_doc = OpenApiBuilder::new().components(Some(components)).build();
+            doc.merge(components_doc);
+            
+            //note: doc.merge cannot be used for path as Paths is merged only the path and method is not considered
+            match doc.paths.paths.entry(to_swagger(&self.path)) {
+                Entry::Vacant(entry) => {
+                    entry.insert(PathItemBuilder::new().operation(method, operation).build());
+                }
+                Entry::Occupied(mut entry) => match entry.get_mut().operations.entry(method) {
+                    Entry::Vacant(item) => {
+                        item.insert(operation);
+                    }
+                    Entry::Occupied(_) => {
+                        log::warn!("[{:?}] {} already registered", self.method, self.path);
+                    }
+                },
+            };
         }
 
         router.route(&self.path, self.router)
