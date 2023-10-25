@@ -13,6 +13,13 @@ impl PGErrorChecks for tokio_postgres::Error {
             {
                 return true;
             }
+
+            if &SqlState::FOREIGN_KEY_VIOLATION == err.code()
+                && err.table() == Some(table)
+                && err.message().contains(constraint)
+            {
+                return true;
+            }
         }
         false
     }
