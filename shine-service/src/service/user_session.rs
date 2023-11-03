@@ -73,7 +73,7 @@ pub struct CurrentUser {
     #[serde(rename = "r")]
     pub roles: Vec<String>,
     #[serde(rename = "fp")]
-    pub fingerprint_hash: String,
+    pub fingerprint: String,
     #[serde(rename = "v")]
     pub version: i32,
 }
@@ -174,7 +174,7 @@ where
             .ok_or(UserSessionError::Unauthenticated)?;
 
         // perform the least minimal validation
-        if user.fingerprint_hash != fingerprint.hash() {
+        if user.fingerprint != fingerprint.as_str() {
             Err(UserSessionError::SessionCompromised)
         } else {
             Ok(UncheckedCurrentUser(user))
@@ -225,7 +225,7 @@ impl UserSessionValidator {
         #[serde(rename_all = "camelCase")]
         struct SessionSentinel {
             pub start_date: DateTime<Utc>,
-            pub fingerprint_hash: String,
+            pub fingerprint: String,
         }
 
         #[derive(Serialize, Deserialize, Debug, RedisJsonValue)]
@@ -279,7 +279,7 @@ impl UserSessionValidator {
         };
 
         // check the immutable
-        if user.fingerprint_hash != sentinel.fingerprint_hash
+        if user.fingerprint != sentinel.fingerprint
             || user.version > version
             || user.session_start != sentinel.start_date
         {

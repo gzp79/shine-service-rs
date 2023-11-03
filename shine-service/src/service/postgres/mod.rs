@@ -60,6 +60,7 @@ macro_rules! pg_query {
         $crate::pg_prepared_statement!($id => $stmt, [$($pid:$pty),*]);
 
         impl $id {
+            #[allow(clippy::too_many_arguments)]
             pub async fn query<'a, T>(
                 &self,
                 client: T,
@@ -76,6 +77,7 @@ macro_rules! pg_query {
                 rows.into_iter().map(|row| row.try_get(0)).collect::<Result<Vec<_>,_>>()
             }
 
+            #[allow(clippy::too_many_arguments)]
             pub async fn query_one<'a, T>(
                 &self,
                 client: T,
@@ -92,6 +94,7 @@ macro_rules! pg_query {
                 Ok($rid)
             }
 
+            #[allow(clippy::too_many_arguments)]
             pub async fn query_opt<'a, T>(
                 &self,
                 client: T,
@@ -120,6 +123,7 @@ macro_rules! pg_query {
         $crate::pg_prepared_statement!($id => $stmt, [$($pid:$pty),*]);
 
         impl $id {
+            #[allow(clippy::too_many_arguments)]
             pub async fn query<'a, T>(
                 &self,
                 client: T,
@@ -146,6 +150,7 @@ macro_rules! pg_query {
                 }).collect::<Result<Vec<_>,_>>()
             }
 
+            #[allow(clippy::too_many_arguments)]
             pub async fn query_one<'a, T>(
                 &self,
                 client: T,
@@ -163,6 +168,7 @@ macro_rules! pg_query {
                 Ok(($($rid,)*))
             }
 
+            #[allow(clippy::too_many_arguments)]
             pub async fn query_opt<'a, T>(
                 &self,
                 client: T,
@@ -200,6 +206,7 @@ macro_rules! pg_query {
         }
 
         impl $id {
+            #[allow(clippy::too_many_arguments)]
             pub async fn query<'a, T>(
                 &self,
                 client: T,
@@ -226,6 +233,7 @@ macro_rules! pg_query {
                 }).collect::<Result<Vec<_>,_>>()
             }
 
+            #[allow(clippy::too_many_arguments)]
             pub async fn query_one<'a, T>(
                 &self,
                 client: T,
@@ -243,6 +251,7 @@ macro_rules! pg_query {
                 Ok($oty{$($rid,)*})
             }
 
+            #[allow(clippy::too_many_arguments)]
             pub async fn query_opt<'a, T>(
                 &self,
                 client: T,
@@ -275,6 +284,7 @@ macro_rules! pg_query {
         $crate::pg_prepared_statement!($id => $stmt, [$($pid:$pty),*]);
 
         impl $id {
+            #[allow(clippy::too_many_arguments)]
             pub async fn execute<'a, T>(
                 &self,
                 client: T,
