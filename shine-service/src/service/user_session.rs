@@ -22,16 +22,6 @@ use uuid::Uuid;
 
 use super::ClientFingerprint;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
-pub enum CurrentUserAuthenticity {
-    #[serde(rename = "a")]
-    Authentic,
-    #[serde(rename = "c")]
-    Cached,
-    #[serde(rename = "n")]
-    NotValidate,
-}
-
 #[derive(Debug, ThisError)]
 pub enum UserSessionError {
     #[error("Missing session info")]
@@ -58,10 +48,6 @@ impl IntoResponse for UserSessionError {
 /// stored data in the session cookie
 #[derive(Clone, Debug, Hash, Serialize, Deserialize, RedisJsonValue)]
 pub struct CurrentUser {
-    /// Indicates if this information confirms to the UserSessionValidator.
-    /// If validator is skipped (for example in AuthSession handler in the identity service), it defaults to false.
-    #[serde(rename = "a")]
-    pub authenticity: CurrentUserAuthenticity,
     #[serde(rename = "id")]
     pub user_id: Uuid,
     #[serde(rename = "k", with = "serde_session_key")]
@@ -286,7 +272,6 @@ impl UserSessionValidator {
             return Err(UserSessionError::SessionCompromised);
         }
 
-        user.authenticity = CurrentUserAuthenticity::Authentic;
         user.name = data.name;
         user.roles = data.roles;
         user.version = version;
@@ -294,7 +279,6 @@ impl UserSessionValidator {
     }
 
     async fn update(&self, user: &mut CurrentUser) -> Result<(), UserSessionError> {
-        user.authenticity = CurrentUserAuthenticity::Authentic;
         self.refresh_session_data(user).await?;
         Ok(())
     }
