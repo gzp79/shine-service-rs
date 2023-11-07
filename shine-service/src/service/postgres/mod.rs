@@ -15,32 +15,30 @@ macro_rules! pg_prepared_statement {
         struct $id($crate::service::PGStatementId);
 
         impl $id {
-            async fn create_statement(client: $crate::service::PGClientOrTransaction<'_>) -> Result<$crate::service::PGStatement, $crate::service::PGError> {
+            async fn create_statement<T>(client: &$crate::service::PGConnection<T>) -> Result<$crate::service::PGStatement, $crate::service::PGError> 
+            where 
+                T: $crate::service::PGRawConnection
+            {
                 log::debug!("creating prepared statement: \"{:#}\"", $stmt);
-                match client {
-                    $crate::service::PGClientOrTransaction::Client(client) => client
-                        .prepare_typed($stmt, &[$(<$pty as $crate::service::ToPGType>::PG_TYPE,)*])
-                        .await,
-                    $crate::service::PGClientOrTransaction::Transaction(client) => client
-                        .prepare_typed($stmt, &[$(<$pty as $crate::service::ToPGType>::PG_TYPE,)*])
-                        .await,
-                }
+                client
+                    .prepare_typed($stmt, &[$(<$pty as $crate::service::ToPGType>::PG_TYPE,)*])
+                    .await
             }
 
-            pub async fn new(client: &bb8::PooledConnection<'_, $crate::service::PGConnectionManager>) -> Result<Self, $crate::service::PGError> {
-                let stmt = Self::create_statement($crate::service::PGClientOrTransaction::from(client)).await?;
+            pub async fn new(client: &$crate::service::PGClient) -> Result<Self, $crate::service::PGError> 
+            {
+                let stmt = Self::create_statement(&client).await?;
                 Ok(Self(client.create_statement(stmt).await))
             }
 
-            pub async fn statement<'a, T>(&self, client: T) -> Result<$crate::service::PGStatement, $crate::service::PGError>
+            pub async fn statement<'a, T>(&self, client: &$crate::service::PGConnection<T>) -> Result<$crate::service::PGStatement, $crate::service::PGError>
             where
-                T: Into<$crate::service::PGClientOrTransaction<'a>>
+                T: $crate::service::PGRawConnection
             {
-                let client: $crate::service::PGClientOrTransaction = client.into();
                 if let Some(stmt) = client.get_statement(self.0).await {
                     Ok(stmt)
                 } else {
-                    let stmt = Self::create_statement(client).await?;
+                    let stmt = Self::create_statement(&client).await?;
                     client.set_statement(self.0, stmt.clone()).await;
                     Ok(stmt)
                 }
@@ -63,14 +61,12 @@ macro_rules! pg_query {
             #[allow(clippy::too_many_arguments)]
             pub async fn query<'a, T>(
                 &self,
-                client: T,
+                client: &$crate::service::PGConnection<T>,
                 $($pid: &$pty,)*
             ) -> Result<Vec<$rty>, $crate::service::PGError>
             where
-                T: Into<$crate::service::PGClientOrTransaction<'a>>
+                T: $crate::service::PGRawConnection
             {
-                let client: $crate::service::PGClientOrTransaction = client.into();
-
                 let statement = self.statement(client).await?;
                 let rows = client.query(&statement, &[$($pid,)*]).await?;
 
@@ -80,14 +76,12 @@ macro_rules! pg_query {
             #[allow(clippy::too_many_arguments)]
             pub async fn query_one<'a, T>(
                 &self,
-                client: T,
+                client: &$crate::service::PGConnection<T>,
                 $($pid: &$pty,)*
             ) -> Result<$rty, $crate::service::PGError>
             where
-                T: Into<$crate::service::PGClientOrTransaction<'a>>
+                T: $crate::service::PGRawConnection
             {
-                let client: $crate::service::PGClientOrTransaction = client.into();
-
                 let statement = self.statement(client).await?;
                 let row = client.query_one(&statement, &[$($pid,)*]).await?;
                 let $rid: $rty = row.try_get(0)?;
@@ -97,14 +91,12 @@ macro_rules! pg_query {
             #[allow(clippy::too_many_arguments)]
             pub async fn query_opt<'a, T>(
                 &self,
-                client: T,
+                client: &$crate::service::PGConnection<T>,
                 $($pid: &$pty,)*
             ) -> Result<Option<$rty>, $crate::service::PGError>
             where
-                T: Into<$crate::service::PGClientOrTransaction<'a>>
+                T: $crate::service::PGRawConnection
             {
-                let client: $crate::service::PGClientOrTransaction = client.into();
-
                 let statement = self.statement(client).await?;
                 match client.query_opt(&statement, &[$($pid,)*]).await?
                 {
@@ -126,14 +118,12 @@ macro_rules! pg_query {
             #[allow(clippy::too_many_arguments)]
             pub async fn query<'a, T>(
                 &self,
-                client: T,
+                client: &$crate::service::PGConnection<T>,
                 $($pid: &$pty,)*
             ) -> Result<Vec<($($rty,)*)>, $crate::service::PGError>
             where
-                T: Into<$crate::service::PGClientOrTransaction<'a>>
+                T: $crate::service::PGRawConnection
             {
-                let client: $crate::service::PGClientOrTransaction = client.into();
-
                 let statement = self.statement(client).await?;
                 let rows = client.query(&statement, &[$($pid,)*]).await?;
 
@@ -153,14 +143,12 @@ macro_rules! pg_query {
             #[allow(clippy::too_many_arguments)]
             pub async fn query_one<'a, T>(
                 &self,
-                client: T,
+                client: &$crate::service::PGConnection<T>,
                 $($pid: &$pty,)*
             ) -> Result<($($rty,)*), $crate::service::PGError>
             where
-                T: Into<$crate::service::PGClientOrTransaction<'a>>
+                T: $crate::service::PGRawConnection
             {
-                let client: $crate::service::PGClientOrTransaction = client.into();
-
                 let statement = self.statement(client).await?;
                 let row = client.query_one(&statement, &[$($pid,)*]).await?;
                 let mut __id = 0;
@@ -171,14 +159,12 @@ macro_rules! pg_query {
             #[allow(clippy::too_many_arguments)]
             pub async fn query_opt<'a, T>(
                 &self,
-                client: T,
+                client: &$crate::service::PGConnection<T>,
                 $($pid: &$pty,)*
             ) -> Result<Option<($($rty,)*)>, $crate::service::PGError>
             where
-                T: Into<$crate::service::PGClientOrTransaction<'a>>
+                T: $crate::service::PGRawConnection
             {
-                let client: $crate::service::PGClientOrTransaction = client.into();
-
                 let statement = self.statement(client).await?;
                 let row = client.query_opt(&statement, &[$($pid,)*]).await?;
                 match client.query_opt(&statement, &[$($pid,)*]).await?
@@ -209,14 +195,12 @@ macro_rules! pg_query {
             #[allow(clippy::too_many_arguments)]
             pub async fn query<'a, T>(
                 &self,
-                client: T,
+                client: &$crate::service::PGConnection<T>,
                 $($pid: &$pty,)*
             ) -> Result<Vec<$oty>, $crate::service::PGError>
             where
-                T: Into<$crate::service::PGClientOrTransaction<'a>>
+                T: $crate::service::PGRawConnection
             {
-                let client: $crate::service::PGClientOrTransaction = client.into();
-
                 let statement = self.statement(client).await?;
                 let rows = client.query(&statement, &[$($pid,)*]).await?;
 
@@ -236,14 +220,12 @@ macro_rules! pg_query {
             #[allow(clippy::too_many_arguments)]
             pub async fn query_one<'a, T>(
                 &self,
-                client: T,
+                client: &$crate::service::PGConnection<T>,
                 $($pid: &$pty,)*
             ) -> Result<$oty, $crate::service::PGError>
             where
-                T: Into<$crate::service::PGClientOrTransaction<'a>>
+                T: $crate::service::PGRawConnection
             {
-                let client: $crate::service::PGClientOrTransaction = client.into();
-
                 let statement = self.statement(client).await?;
                 let row = client.query_one(&statement, &[$($pid,)*]).await?;
                 let mut __id = 0;
@@ -254,14 +236,12 @@ macro_rules! pg_query {
             #[allow(clippy::too_many_arguments)]
             pub async fn query_opt<'a, T>(
                 &self,
-                client: T,
+                client: &$crate::service::PGConnection<T>,
                 $($pid: &$pty,)*
             ) -> Result<Option<$oty>, $crate::service::PGError>
             where
-                T: Into<$crate::service::PGClientOrTransaction<'a>>
+                T: $crate::service::PGRawConnection
             {
-                let client: $crate::service::PGClientOrTransaction = client.into();
-
                 let statement = self.statement(client).await?;
                 let row = client.query_opt(&statement, &[$($pid,)*]).await?;
                 match client.query_opt(&statement, &[$($pid,)*]).await?
@@ -287,14 +267,12 @@ macro_rules! pg_query {
             #[allow(clippy::too_many_arguments)]
             pub async fn execute<'a, T>(
                 &self,
-                client: T,
+                client: &$crate::service::PGConnection<T>,
                 $($pid: &$pty,)*
             ) -> Result<u64, $crate::service::PGError>
             where
-                T: Into<$crate::service::PGClientOrTransaction<'a>>
+                T: $crate::service::PGRawConnection
             {
-                let client: $crate::service::PGClientOrTransaction = client.into();
-
                 let statement = self.statement(client).await?;
                 client.execute(&statement, &[$($pid,)*]).await
             }
