@@ -12,5 +12,3 @@ mod postgres;
 pub use self::postgres::*;
 
 pub mod cacerts;
-
-pub const APP_NAME: &str = "Scytta";

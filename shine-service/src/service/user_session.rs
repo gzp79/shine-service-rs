@@ -210,7 +210,7 @@ impl UserSessionValidator {
         #[derive(Serialize, Deserialize, Debug, RedisJsonValue)]
         #[serde(rename_all = "camelCase")]
         struct SessionSentinel {
-            pub start_date: DateTime<Utc>,
+            pub created_at: DateTime<Utc>,
             pub fingerprint: String,
         }
 
@@ -267,7 +267,7 @@ impl UserSessionValidator {
         // check the immutable
         if user.fingerprint != sentinel.fingerprint
             || user.version > version
-            || user.session_start != sentinel.start_date
+            || user.session_start != sentinel.created_at
         {
             return Err(UserSessionError::SessionCompromised);
         }
