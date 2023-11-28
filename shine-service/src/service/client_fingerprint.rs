@@ -1,20 +1,54 @@
+use crate::axum::Problem;
 use axum::{
-    async_trait, extract::FromRequestParts, headers::UserAgent, http::request::Parts, RequestPartsExt, TypedHeader,
+    async_trait,
+    extract::FromRequestParts,
+    headers::UserAgent,
+    http::request::Parts,
+    response::{IntoResponse, Response},
+    RequestPartsExt, TypedHeader,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD as B64, Engine};
 use ring::digest::{self, Context};
-use std::convert::Infallible;
+use thiserror::Error as ThisError;
+
+#[derive(Debug, ThisError)]
+pub enum ClientFingerprintError {
+    #[error("Missing user agent")]
+    MissingUserAgent,
+}
+
+impl ClientFingerprintError {
+    fn into_problem(self) -> Problem {
+        match self {
+            ClientFingerprintError::MissingUserAgent => Problem::bad_request().with_type("missing_user_agent"),
+        }
+    }
+}
+
+impl IntoResponse for ClientFingerprintError {
+    fn into_response(self) -> Response {
+        self.into_problem().into_response()
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 /// Some fingerprinting of the client site to detect token stealing.
 pub struct ClientFingerprint(String);
 
 impl ClientFingerprint {
-    pub fn from_agent(agent: String) -> Self {
-        let mut context = Context::new(&digest::SHA256);
-        context.update(agent.as_bytes());
-        let hash = B64.encode(context.finish().as_ref());
-        Self(hash)
+    pub fn unknown() -> Self {
+        Self("unknown".to_string())
+    }
+
+    pub fn from_agent(agent: String) -> Result<Self, ClientFingerprintError> {
+        if agent.is_empty() {
+            Err(ClientFingerprintError::MissingUserAgent)
+        } else {
+            let mut context = Context::new(&digest::SHA256);
+            context.update(agent.as_bytes());
+            let hash = B64.encode(context.finish().as_ref());
+            Ok(Self(hash))
+        }
     }
 
     pub fn as_str(&self) -> &str {
@@ -35,7 +69,7 @@ impl<S> FromRequestParts<S> for ClientFingerprint
 where
     S: Send + Sync,
 {
-    type Rejection = Infallible;
+    type Rejection = ClientFingerprintError;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let agent = parts
@@ -44,6 +78,10 @@ where
             .map(|u| u.to_string())
             .unwrap_or_default();
 
-        Ok(ClientFingerprint::from_agent(agent))
+        if agent.is_empty() {
+            Ok(ClientFingerprint::unknown())
+        } else {
+            ClientFingerprint::from_agent(agent)
+        }
     }
 }

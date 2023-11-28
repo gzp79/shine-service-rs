@@ -20,6 +20,13 @@ impl PGErrorChecks for tokio_postgres::Error {
             {
                 return true;
             }
+
+            if &SqlState::CHECK_VIOLATION == err.code()
+                && err.table() == Some(table)
+                && err.message().contains(constraint)
+            {
+                return true;
+            }
         }
         false
     }
