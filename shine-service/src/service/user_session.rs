@@ -48,13 +48,13 @@ impl IntoResponse for UserSessionError {
 /// stored data in the session cookie
 #[derive(Clone, Debug, Hash, Serialize, Deserialize, RedisJsonValue)]
 pub struct CurrentUser {
-    #[serde(rename = "id")]
+    #[serde(rename = "u")]
     pub user_id: Uuid,
-    #[serde(rename = "k", with = "serde_session_key")]
+    #[serde(rename = "key", with = "serde_session_key")]
     pub key: SessionKey,
-    #[serde(rename = "t")]
+    #[serde(rename = "sd")]
     pub session_start: DateTime<Utc>,
-    #[serde(rename = "n")]
+    #[serde(rename = "nm")]
     pub name: String,
     #[serde(rename = "r")]
     pub roles: Vec<String>,
