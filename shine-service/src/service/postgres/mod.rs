@@ -8,6 +8,7 @@ pub use self::pg_connection::*;
 mod pg_type;
 pub use self::pg_type::*;
 
+
 /// Create a prepared SQL statements
 #[macro_export]
 macro_rules! pg_prepared_statement {
@@ -169,7 +170,6 @@ macro_rules! pg_query {
 
     ($id:ident =>
         in = $($pid:ident: $pty:ty),*;
-        out = ();
         sql = $stmt:expr ) => {
 
         $crate::pg_prepared_statement!($id => $stmt, [$($pid:$pty),*]);

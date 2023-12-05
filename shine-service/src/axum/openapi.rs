@@ -1,5 +1,4 @@
 use axum::{
-    body::HttpBody,
     handler::Handler,
     http::StatusCode,
     routing::{delete, get, post, put, MethodRouter},
@@ -248,10 +247,9 @@ where
 }
 
 /// Helper trait to add ApiEndpoint to a Router
-pub trait ApiRoute<S, B>
+pub trait ApiRoute<S>
 where
     S: Clone + Send + Sync + 'static,
-    B: HttpBody + Send + 'static,
 {
     fn add_opt_api(self, endpoint: ApiEndpoint<S>, doc: Option<&mut OpenApi>) -> Self;
 
@@ -263,10 +261,9 @@ where
     }
 }
 
-impl<S, B> ApiRoute<S, B> for Router<S>
+impl<S> ApiRoute<S> for Router<S>
 where
     S: Clone + Send + Sync + 'static,
-    B: HttpBody + Send + 'static,
 {
     fn add_opt_api(self, endpoint: ApiEndpoint<S>, doc: Option<&mut OpenApi>) -> Self {
         endpoint.register(self, doc)
