@@ -4,8 +4,8 @@
         "MIRIFLAGS": "-Zmiri-backtrace=full",
         "RUST_LOG": "info, pg_prepared_statements=trace,sqlx=WARN",
 
-        //"SHINE_TEST_REDIS_CNS": "redis://redis.localhost.com:6379",
-        //"SHINE_TEST_PG_CNS": "postgres://username:password@postgres.localhost.com:5432/database-name?sslmode=disable"
+        "SHINE_TEST_REDIS_CNS": "redis://redis.mockbox.com:6379",
+        "SHINE_TEST_PG_CNS": "postgres://username:password@postgres.mockbox.com:5432/database-name?sslmode=disable"
     },
 
     "cSpell.words": [

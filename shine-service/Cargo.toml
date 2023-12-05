@@ -36,34 +36,36 @@ rustls-pemfile = "1.0"
 reqwest = { version = "0.11", optional = true }
 
 validator = { version = "0.16", features = ["derive"] }
-utoipa = { version = "3.4", features = ["uuid", "chrono", "debug"] }
+utoipa = { version = "4.1", features = ["uuid", "chrono", "debug"] }
 
 bb8 = "0.8"
 bb8-redis = "0.13"
 redis = { version = "0.23.0", features = ["tokio-comp", "tokio-rustls-comp"] }
 bb8-postgres = "0.8"
 tokio-postgres = { version = "0.7", features = ["with-uuid-1", "with-chrono-0_4", "runtime"] }
-tokio-rustls = "0.24"
+tokio-rustls = "0.25"
 tokio-postgres-rustls = "0.10"
+postgres-from-row = "0.5"
 
-azure_core = { version = "0.16" }
-azure_identity = { version = "0.16" }
-azure_security_keyvault = { version = "0.16" }
+azure_core = { version = "0.17" }
+azure_identity = { version = "0.17" }
+azure_security_keyvault = { version = "0.17" }
 
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-opentelemetry = "0.21"
-opentelemetry = { version = "0.20", features = ["rt-tokio"] }
-opentelemetry-semantic-conventions = "0.12"
-opentelemetry-stdout = { version = "0.1", features = ["logs", "trace"] }
-opentelemetry-jaeger = { version = "0.19", features = ["rt-tokio"], optional = true }
-opentelemetry-zipkin = { version ="0.18", features = ["reqwest-client"], default-features = false, optional = true }
-opentelemetry-application-insights = { version = "0.27", optional = true }
+tracing-opentelemetry = "0.22"
+opentelemetry = "0.21"
+opentelemetry-semantic-conventions = "0.13"
+opentelemetry_sdk = { version = "0.21", features = [] }
+opentelemetry-stdout = { version = "0.2", features = ["logs", "trace"] }
+opentelemetry-jaeger = { version = "0.20", features = ["rt-tokio"], optional = true }
+opentelemetry-zipkin = { version ="0.19", features = ["reqwest-client"], default-features = false, optional = true }
+opentelemetry-application-insights = { version = "0.29", optional = true }
 
 tower = "0.4"
-axum = { version = "0.6", features = ["headers"] }
-axum-extra = { version = "0.8", features = ["cookie", "cookie-signed", "cookie-private"] }
-axum-tracing-opentelemetry = "0.14"
+axum = "0.7"
+axum-extra = { version = "0.9", features = ["cookie", "cookie-signed", "cookie-private", "typed-header"] }
+axum-tracing-opentelemetry = "0.15"
 
 shine-macros = { path = "../shine-macros", version = "0.1.0" }
 

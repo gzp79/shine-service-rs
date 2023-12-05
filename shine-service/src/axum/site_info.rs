@@ -1,10 +1,10 @@
 use axum::{
     async_trait,
     extract::FromRequestParts,
-    headers::UserAgent,
     http::{request::Parts, HeaderMap},
-    RequestPartsExt, TypedHeader,
+    RequestPartsExt,
 };
+use axum_extra::{headers::UserAgent, TypedHeader};
 use std::convert::Infallible;
 
 #[derive(Debug, PartialEq, Eq)]

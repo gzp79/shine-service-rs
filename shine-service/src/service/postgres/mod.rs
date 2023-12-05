@@ -15,8 +15,8 @@ macro_rules! pg_prepared_statement {
         struct $id($crate::service::PGStatementId);
 
         impl $id {
-            async fn create_statement<T>(client: &$crate::service::PGConnection<T>) -> Result<$crate::service::PGStatement, $crate::service::PGError> 
-            where 
+            async fn create_statement<T>(client: &$crate::service::PGConnection<T>) -> Result<$crate::service::PGStatement, $crate::service::PGError>
+            where
                 T: $crate::service::PGRawConnection
             {
                 log::debug!("creating prepared statement: \"{:#}\"", $stmt);
@@ -25,7 +25,7 @@ macro_rules! pg_prepared_statement {
                     .await
             }
 
-            pub async fn new(client: &$crate::service::PGClient) -> Result<Self, $crate::service::PGError> 
+            pub async fn new(client: &$crate::service::PGClient) -> Result<Self, $crate::service::PGError>
             {
                 let stmt = Self::create_statement(&client).await?;
                 Ok(Self(client.create_statement(stmt).await))
@@ -70,7 +70,7 @@ macro_rules! pg_query {
                 let statement = self.statement(client).await?;
                 let rows = client.query(&statement, &[$($pid,)*]).await?;
 
-                rows.into_iter().map(|row| row.try_get(0)).collect::<Result<Vec<_>,_>>()
+                rows.into_iter().map(|row| row.try_get(&stringify!($rid))).collect::<Result<Vec<_>,_>>()
             }
 
             #[allow(clippy::too_many_arguments)]
@@ -84,8 +84,8 @@ macro_rules! pg_query {
             {
                 let statement = self.statement(client).await?;
                 let row = client.query_one(&statement, &[$($pid,)*]).await?;
-                let $rid: $rty = row.try_get(0)?;
-                Ok($rid)
+                let value: $rty = row.try_get(&stringify!($rid))?;
+                Ok(value)
             }
 
             #[allow(clippy::too_many_arguments)]
@@ -101,7 +101,7 @@ macro_rules! pg_query {
                 match client.query_opt(&statement, &[$($pid,)*]).await?
                 {
                     None => Ok(None),
-                    Some(row) => Ok(Some(row.try_get(0)?)),
+                    Some(row) => Ok(Some(row.try_get(&stringify!($rid))?)),
                 }
             }
         }
@@ -109,87 +109,10 @@ macro_rules! pg_query {
 
     ($id:ident =>
         in = $($pid:ident: $pty:ty),*;
-        out = ($($rid:ident: $rty:ty),*);
+        out = $oty:ty;
         sql = $stmt:expr ) => {
 
         $crate::pg_prepared_statement!($id => $stmt, [$($pid:$pty),*]);
-
-        impl $id {
-            #[allow(clippy::too_many_arguments)]
-            pub async fn query<'a, T>(
-                &self,
-                client: &$crate::service::PGConnection<T>,
-                $($pid: &$pty,)*
-            ) -> Result<Vec<($($rty,)*)>, $crate::service::PGError>
-            where
-                T: $crate::service::PGRawConnection
-            {
-                let statement = self.statement(client).await?;
-                let rows = client.query(&statement, &[$($pid,)*]).await?;
-
-                rows.into_iter().map(|row| {
-                    let mut __id = 0;
-                    $(
-                        let $rid: $rty = match row.try_get(__id) {
-                            Ok(v) => v,
-                            Err(err) => return Err(err),
-                        };
-                        __id += 1;
-                    )*
-                    Ok(($($rid,)*))
-                }).collect::<Result<Vec<_>,_>>()
-            }
-
-            #[allow(clippy::too_many_arguments)]
-            pub async fn query_one<'a, T>(
-                &self,
-                client: &$crate::service::PGConnection<T>,
-                $($pid: &$pty,)*
-            ) -> Result<($($rty,)*), $crate::service::PGError>
-            where
-                T: $crate::service::PGRawConnection
-            {
-                let statement = self.statement(client).await?;
-                let row = client.query_one(&statement, &[$($pid,)*]).await?;
-                let mut __id = 0;
-                $(let $rid: $rty = row.try_get(__id)?; __id += 1;)*
-                Ok(($($rid,)*))
-            }
-
-            #[allow(clippy::too_many_arguments)]
-            pub async fn query_opt<'a, T>(
-                &self,
-                client: &$crate::service::PGConnection<T>,
-                $($pid: &$pty,)*
-            ) -> Result<Option<($($rty,)*)>, $crate::service::PGError>
-            where
-                T: $crate::service::PGRawConnection
-            {
-                let statement = self.statement(client).await?;
-                let row = client.query_opt(&statement, &[$($pid,)*]).await?;
-                match client.query_opt(&statement, &[$($pid,)*]).await?
-                {
-                    None => Ok(None),
-                    Some(row) => {
-                        let mut __id = 0;
-                        $(let $rid: $rty = row.try_get(__id)?; __id += 1;)*
-                        Ok(Some(($($rid,)*)))
-                    }
-                }
-           }
-        }
-    };
-
-    ($id:ident =>
-        in = $($pid:ident: $pty:ty),*;
-        out = $oty:ident{$($rid:ident: $rty:ty),*};
-        sql = $stmt:expr ) => {
-
-        $crate::pg_prepared_statement!($id => $stmt, [$($pid:$pty),*]);
-
-        struct $oty {
-            $(pub $rid: $rty),*
-        }
 
         impl $id {
             #[allow(clippy::too_many_arguments)]
@@ -204,17 +127,9 @@ macro_rules! pg_query {
                 let statement = self.statement(client).await?;
                 let rows = client.query(&statement, &[$($pid,)*]).await?;
 
-                rows.into_iter().map(|row| {
-                    let mut __id = 0;
-                    $(
-                        let $rid: $rty = match row.try_get(__id) {
-                            Ok(v) => v,
-                            Err(err) => return Err(err),
-                        };
-                        __id += 1;
-                    )*
-                    Ok($oty{$($rid,)*})
-                }).collect::<Result<Vec<_>,_>>()
+                rows.into_iter()
+                    .map(|row| <$oty as postgres_from_row::FromRow>::try_from_row(&row))
+                    .collect::<Result<Vec<_>,_>>()
             }
 
             #[allow(clippy::too_many_arguments)]
@@ -227,10 +142,10 @@ macro_rules! pg_query {
                 T: $crate::service::PGRawConnection
             {
                 let statement = self.statement(client).await?;
-                let row = client.query_one(&statement, &[$($pid,)*]).await?;
-                let mut __id = 0;
-                $(let $rid: $rty = row.try_get(__id)?; __id += 1;)*
-                Ok($oty{$($rid,)*})
+                <$oty as postgres_from_row::FromRow>::try_from_row(&client
+                    .query_one(&statement, &[$($pid,)*])
+                    .await?)
+
             }
 
             #[allow(clippy::too_many_arguments)]
@@ -244,21 +159,17 @@ macro_rules! pg_query {
             {
                 let statement = self.statement(client).await?;
                 let row = client.query_opt(&statement, &[$($pid,)*]).await?;
-                match client.query_opt(&statement, &[$($pid,)*]).await?
-                {
-                    None => Ok(None),
-                    Some(row) => {
-                        let mut __id = 0;
-                        $(let $rid: $rty = row.try_get(__id)?; __id += 1;)*
-                        Ok(Some($oty{$($rid,)*}))
-                    }
-                }
-           }
+                client.query_opt(&statement, &[$($pid,)*])
+                    .await?
+                    .map(|row| <$oty as postgres_from_row::FromRow>::try_from_row(&row))
+                    .transpose()
+            }
         }
     };
 
     ($id:ident =>
         in = $($pid:ident: $pty:ty),*;
+        out = ();
         sql = $stmt:expr ) => {
 
         $crate::pg_prepared_statement!($id => $stmt, [$($pid:$pty),*]);

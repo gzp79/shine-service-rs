@@ -2,11 +2,11 @@ use crate::axum::Problem;
 use axum::{
     async_trait,
     extract::FromRequestParts,
-    headers::UserAgent,
     http::request::Parts,
     response::{IntoResponse, Response},
-    RequestPartsExt, TypedHeader,
+    RequestPartsExt,
 };
+use axum_extra::{headers::UserAgent, TypedHeader};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD as B64, Engine};
 use ring::digest::{self, Context};
 use thiserror::Error as ThisError;
@@ -59,6 +59,7 @@ impl ClientFingerprint {
         self.0
     }
 
+    #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
         self.0.clone()
     }

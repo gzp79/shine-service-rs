@@ -1,10 +1,12 @@
 use opentelemetry::{
     global,
-    sdk::{
-        trace::{self as otsdk, TracerProvider},
-        Resource,
-    },
     trace::{TraceError, Tracer, TracerProvider as _},
+};
+use opentelemetry_sdk::{
+    runtime::Tokio,
+    trace::config as otConfig,
+    trace::{Sampler, TracerProvider},
+    Resource,
 };
 use opentelemetry_semantic_conventions as otconv;
 use serde::{Deserialize, Serialize};
@@ -173,11 +175,7 @@ impl TracingManager {
                 let exporter = opentelemetry_stdout::SpanExporter::default();
                 let provider = TracerProvider::builder()
                     .with_simple_exporter(exporter)
-                    .with_config(
-                        otsdk::config()
-                            .with_resource(resource)
-                            .with_sampler(otsdk::Sampler::AlwaysOn),
-                    )
+                    .with_config(otConfig().with_resource(resource).with_sampler(Sampler::AlwaysOn))
                     .build();
                 let tracer = provider.versioned_tracer(
                     "opentelemetry-stdout",
@@ -191,17 +189,17 @@ impl TracingManager {
             #[cfg(feature = "ot_jaeger")]
             Telemetry::Jaeger => {
                 let tracer = opentelemetry_jaeger::new_agent_pipeline()
-                    .with_trace_config(otsdk::config().with_resource(resource))
+                    .with_trace_config(otConfig().with_resource(resource))
                     .with_service_name(service_name.to_string())
-                    .install_batch(opentelemetry::runtime::Tokio)?;
+                    .install_batch(Tokio)?;
                 self.install_pipeline(config, Self::ot_layer(tracer))
             }
             #[cfg(feature = "ot_zipkin")]
             Telemetry::Zipkin => {
                 let tracer = opentelemetry_zipkin::new_pipeline()
-                    .with_trace_config(otsdk::config().with_resource(resource))
+                    .with_trace_config(otConfig().with_resource(resource))
                     .with_service_name(service_name.to_string())
-                    .install_batch(opentelemetry::runtime::Tokio)?;
+                    .install_batch(Tokio)?;
                 self.install_pipeline(config, Self::ot_layer(tracer))
             }
             #[cfg(feature = "ot_app_insight")]
@@ -210,10 +208,10 @@ impl TracingManager {
                     instrumentation_key.clone(),
                 )
                 .map_err(TracingBuildError::AppInsightConfigError)?
-                .with_trace_config(otsdk::config().with_resource(resource))
+                .with_trace_config(otConfig().with_resource(resource))
                 .with_service_name(service_name.to_string())
                 .with_client(reqwest::Client::new())
-                .install_batch(opentelemetry::runtime::Tokio);
+                .install_batch(Tokio);
                 self.install_pipeline(config, Self::ot_layer(tracer))
             }
             Telemetry::None => self.install_pipeline(config, EmptyLayer),

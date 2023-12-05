@@ -72,23 +72,22 @@ fn to_swagger(path: &str) -> String {
     re.replace_all(path, "{${1}}").to_string()
 }
 
-pub struct ApiEndpoint<S, B> {
+pub struct ApiEndpoint<S> {
     method: ApiMethod,
     path: String,
     pub operation: OperationBuilder,
     pub components: ComponentsBuilder,
-    router: MethodRouter<S, B>,
+    router: MethodRouter<S>,
 }
 
-impl<S, B> ApiEndpoint<S, B>
+impl<S> ApiEndpoint<S>
 where
-    B: HttpBody + Send + 'static,
     S: Clone + Send + Sync + 'static,
 {
     pub fn new<P, H, T>(method: ApiMethod, path: P, action: H) -> Self
     where
         P: ApiPath,
-        H: Handler<T, S, B>,
+        H: Handler<T, S>,
         T: 'static,
     {
         let path = path.path();
@@ -219,16 +218,15 @@ where
         self
     }
 
-    fn register(self, router: Router<S, B>, doc: Option<&mut OpenApi>) -> Router<S, B> {
+    fn register(self, router: Router<S>, doc: Option<&mut OpenApi>) -> Router<S> {
         if let Some(doc) = doc {
-            
             let components = self.components.build();
             let operation = self.operation.build();
             let method = self.method.into();
-            
+
             let components_doc = OpenApiBuilder::new().components(Some(components)).build();
             doc.merge(components_doc);
-            
+
             //note: doc.merge cannot be used for path as Paths is merged only the path and method is not considered
             match doc.paths.paths.entry(to_swagger(&self.path)) {
                 Entry::Vacant(entry) => {
@@ -255,9 +253,9 @@ where
     S: Clone + Send + Sync + 'static,
     B: HttpBody + Send + 'static,
 {
-    fn add_opt_api(self, endpoint: ApiEndpoint<S, B>, doc: Option<&mut OpenApi>) -> Self;
+    fn add_opt_api(self, endpoint: ApiEndpoint<S>, doc: Option<&mut OpenApi>) -> Self;
 
-    fn add_api(self, endpoint: ApiEndpoint<S, B>, doc: &mut OpenApi) -> Self
+    fn add_api(self, endpoint: ApiEndpoint<S>, doc: &mut OpenApi) -> Self
     where
         Self: Sized,
     {
@@ -265,12 +263,12 @@ where
     }
 }
 
-impl<S, B> ApiRoute<S, B> for Router<S, B>
+impl<S, B> ApiRoute<S, B> for Router<S>
 where
     S: Clone + Send + Sync + 'static,
     B: HttpBody + Send + 'static,
 {
-    fn add_opt_api(self, endpoint: ApiEndpoint<S, B>, doc: Option<&mut OpenApi>) -> Self {
+    fn add_opt_api(self, endpoint: ApiEndpoint<S>, doc: Option<&mut OpenApi>) -> Self {
         endpoint.register(self, doc)
     }
 }

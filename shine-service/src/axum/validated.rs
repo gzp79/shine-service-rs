@@ -3,9 +3,9 @@ use axum::{
     async_trait,
     extract::{
         rejection::{JsonRejection, PathRejection, QueryRejection},
-        FromRequest, FromRequestParts, Path, Query,
+        FromRequest, FromRequestParts, Path, Query, Request,
     },
-    http::{request::Parts, Request},
+    http::request::Parts,
     response::{IntoResponse, Response},
     Json, RequestExt,
 };
@@ -100,16 +100,15 @@ where
     J: Validate + 'static;
 
 #[async_trait]
-impl<S, B, J> FromRequest<S, B> for ValidatedJson<J>
+impl<S, J> FromRequest<S> for ValidatedJson<J>
 where
-    B: Send + 'static,
     S: Send + Sync,
     J: Validate + 'static,
-    Json<J>: FromRequest<(), B, Rejection = JsonRejection>,
+    Json<J>: FromRequest<(), Rejection = JsonRejection>,
 {
     type Rejection = ValidationError;
 
-    async fn from_request(req: Request<B>, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request(req: Request, _state: &S) -> Result<Self, Self::Rejection> {
         let Json(data) = req.extract::<Json<J>, _>().await.map_err(ValidationError::JsonFormat)?;
         data.validate().map_err(ValidationError::Constraint)?;
         Ok(Self(data))
