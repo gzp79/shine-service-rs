@@ -1,3 +1,4 @@
+use crate::axum::tracing::OtelLayer;
 use opentelemetry::{
     global,
     trace::{TraceError, Tracer, TracerProvider as _},
@@ -21,8 +22,6 @@ use tracing_subscriber::{
     reload::{self, Handle},
     Layer, Registry,
 };
-
-pub use axum_tracing_opentelemetry::middleware::OtelAxumLayer;
 
 #[derive(Debug, ThisError)]
 pub enum TracingBuildError {
@@ -223,6 +222,11 @@ impl TracingManager {
             reconfigure.reconfigure(filter).map_err(TraceReconfigureError)?
         }
         Ok(())
+    }
+
+    pub fn to_layer(&self) -> OtelLayer {
+        //todo: read route filtering from config
+        OtelLayer::default()
     }
 }
 

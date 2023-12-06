@@ -8,7 +8,6 @@ pub use self::pg_connection::*;
 mod pg_type;
 pub use self::pg_type::*;
 
-
 /// Create a prepared SQL statements
 #[macro_export]
 macro_rules! pg_prepared_statement {
@@ -99,11 +98,10 @@ macro_rules! pg_query {
                 T: $crate::service::PGRawConnection
             {
                 let statement = self.statement(client).await?;
-                match client.query_opt(&statement, &[$($pid,)*]).await?
-                {
-                    None => Ok(None),
-                    Some(row) => Ok(Some(row.try_get(&stringify!($rid))?)),
-                }
+                client.query_opt(&statement, &[$($pid,)*])
+                    .await?
+                    .map(|r| r.try_get(&stringify!($rid)))
+                    .transpose()
             }
         }
     };

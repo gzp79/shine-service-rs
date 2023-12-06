@@ -17,6 +17,7 @@
         "hashids",
         "keyvault",
         "keyvaults",
+        "openapi",
         "opentelemetry",
         "Optimus",
         "otconv",

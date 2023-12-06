@@ -53,7 +53,6 @@ async fn test_pg_query_struct() {
             let stmt2b = TestQuery2Fail::new(&c1).await.unwrap();
             let stmt3 = TestQuery3::new(&c1).await.unwrap();
 
-
             let p1 = stmt1.query_one(&c1, &"data").await.unwrap();
             assert_eq!(p1.one, 1);
             assert_eq!(p1.two, 2);
