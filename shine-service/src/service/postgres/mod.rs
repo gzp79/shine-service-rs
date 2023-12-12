@@ -141,10 +141,10 @@ macro_rules! pg_query {
                 T: $crate::service::PGRawConnection
             {
                 let statement = self.statement(client).await?;
-                <$oty as postgres_from_row::FromRow>::try_from_row(&client
+                let row = client
                     .query_one(&statement, &[$($pid,)*])
-                    .await?)
-
+                    .await?;
+                <$oty as postgres_from_row::FromRow>::try_from_row(&row)
             }
 
             #[allow(clippy::too_many_arguments)]
@@ -157,10 +157,9 @@ macro_rules! pg_query {
                 T: $crate::service::PGRawConnection
             {
                 let statement = self.statement(client).await?;
-                let row = client.query_opt(&statement, &[$($pid,)*]).await?;
                 client.query_opt(&statement, &[$($pid,)*])
                     .await?
-                    .map(|row| <$oty as postgres_from_row::FromRow>::try_from_row(&row))
+                    .map(|row| <$oty as postgres_from_row::FromRow>::try_from_row(&row) )
                     .transpose()
             }
         }
