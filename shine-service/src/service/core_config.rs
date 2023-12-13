@@ -87,6 +87,7 @@ impl CoreConfig {
                     })?;
 
                     if Path::new(path).exists() {
+                        log::info!("Adding optional config file {}...", path);
                         builder = builder.add_source(File::from(Path::new(path)));
                     }
                 }
