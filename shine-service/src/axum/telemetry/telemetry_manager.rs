@@ -183,7 +183,10 @@ impl TelemetryManager {
                 .with_registry(prom_registry.clone())
                 .build()
                 .unwrap();
-            let provider = MeterProvider::builder().with_reader(exporter).build();
+            let provider = MeterProvider::builder()
+                .with_resource(resource.clone())
+                .with_reader(exporter)
+                .build();
             self.meter = Some(provider.meter(service_name.to_string()));
             self.prom_registry = Some(prom_registry);
         }
