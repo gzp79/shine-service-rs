@@ -1,4 +1,4 @@
-use crate::axum::tracing::otel_http;
+use crate::axum::telemetry::otel_http;
 use axum::http::{Method, Request, Response};
 use futures::ready;
 use pin_project::pin_project;
@@ -32,8 +32,8 @@ impl OtelLayer {
 }
 
 impl<S> Layer<S> for OtelLayer {
-    /// The wrapped service
     type Service = OtelService<S>;
+
     fn layer(&self, inner: S) -> Self::Service {
         OtelService {
             inner,
