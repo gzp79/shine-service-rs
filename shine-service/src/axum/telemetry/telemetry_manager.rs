@@ -267,7 +267,11 @@ impl TelemetryManager {
 
     pub fn to_layer(&self) -> OtelLayer {
         //todo: read route filtering from config
-        OtelLayer::default()
+        let mut layer = OtelLayer::default();
+        if let Some(meter) = &self.meter {
+            layer = layer.meter(meter.clone())
+        }
+        layer
     }
 }
 
