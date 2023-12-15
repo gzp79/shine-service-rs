@@ -13,4 +13,4 @@ pub use self::validated::*;
 mod openapi;
 pub use self::openapi::*;
 
-pub mod tracing;
+pub mod telemetry;
