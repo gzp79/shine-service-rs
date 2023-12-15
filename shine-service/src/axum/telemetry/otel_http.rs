@@ -4,7 +4,7 @@ use axum::{
 };
 use opentelemetry::{propagation::Extractor, Context};
 use std::{borrow::Cow, error::Error as StdError};
-use tracing::field::Empty;
+use tracing::{field::Empty, trace_span, Span};
 
 pub const TRACING_TARGET: &str = "otel::tracing";
 
@@ -78,10 +78,7 @@ pub fn extract_context(headers: &HeaderMap) -> Context {
     opentelemetry::global::get_text_map_propagator(|propagator| propagator.extract(&extractor))
 }
 
-pub fn make_span_from_request<B>(req: &Request<B>) -> tracing::Span {
-    // [opentelemetry-specification/.../http.md](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/semantic_conventions/http.md)
-    // [opentelemetry-specification/.../span-general.md](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/semantic_conventions/span-general.md)
-    // Can not use const or opentelemetry_semantic_conventions::trace::* for name of records
+pub fn make_span_from_request<B>(req: &Request<B>) -> Span {
     let http_method = http_method(req.method());
     let route = req
         .extensions()
@@ -90,7 +87,7 @@ pub fn make_span_from_request<B>(req: &Request<B>) -> tracing::Span {
     let name = format!("[{http_method}] {route}");
     let name = name.trim();
 
-    tracing::trace_span!(
+    trace_span!(
         target: TRACING_TARGET,
         "HTTP request",
         http.request.method = %http_method,
@@ -113,32 +110,25 @@ pub fn make_span_from_request<B>(req: &Request<B>) -> tracing::Span {
     )
 }
 
-pub fn update_span_from_response<B>(span: &tracing::Span, response: &Response<B>) {
+pub fn update_span_from_response<B>(span: &Span, response: &Response<B>) {
     let status = response.status();
     span.record("http.response.status_code", status.as_u16());
 
     if status.is_server_error() {
         span.record("otel.status_code", "ERROR");
-        // see[](https://github.com/open-telemetry/opentelemetry-specification/blob/v1.22.0/specification/trace/semantic_conventions/http.md#status)
-        // Span Status MUST be left unset if HTTP status code was in the 1xx, 2xx or 3xx ranges,
-        // unless there was another error (e.g., network error receiving the response body;
-        // or 3xx codes with max redirects exceeded), in which case status MUST be set to Error.
-        // } else {
-        //     span.record("otel.status_code", "OK");
     }
 }
 
-pub fn update_span_from_error<E>(span: &tracing::Span, error: &E)
+pub fn update_span_from_error<E>(span: &Span, error: &E)
 where
     E: StdError,
 {
     span.record("otel.status_code", "ERROR");
-    //span.record("http.status_code", 500);
     span.record("exception.message", error.to_string());
     error.source().map(|s| span.record("exception.message", s.to_string()));
 }
 
-pub fn update_span_from_response_or_error<B, E>(span: &tracing::Span, response: &Result<Response<B>, E>)
+pub fn update_span_from_response_or_error<B, E>(span: &Span, response: &Result<Response<B>, E>)
 where
     E: StdError,
 {

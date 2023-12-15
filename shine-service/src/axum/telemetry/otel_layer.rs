@@ -68,6 +68,13 @@ impl<S> Layer<S> for OtelLayer {
 }
 
 #[derive(Clone)]
+struct OtelContext {
+    method: Method,
+    route: String,
+    start: Instant,
+}
+
+#[derive(Clone)]
 struct OtelMeters {
     request_counter: Counter<u64>,
     request_duration: Histogram<f64>,
@@ -97,20 +104,16 @@ where
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         let req = req;
 
-        if let Some(meters) = &self.meters {
-            let route = req
-                .extensions()
-                .get::<MatchedPath>()
-                .map_or_else(|| "", |mp| mp.as_str());
-
-            meters.request_counter.add(
-                1,
-                &[
-                    KeyValue::new("method", req.method().to_string()),
-                    KeyValue::new("route", route.to_string()),
-                ],
-            );
-        }
+        let route = req
+            .extensions()
+            .get::<MatchedPath>()
+            .map(|mp| mp.as_str().to_string())
+            .unwrap_or_default();
+        let context = OtelContext {
+            method: req.method().to_owned(),
+            route,
+            start: Instant::now(),
+        };
 
         let span = if self.request_filter.map_or(true, |f| f(req.method(), req.uri().path())) {
             let span = otel_http::make_span_from_request(&req);
@@ -125,9 +128,9 @@ where
         };
         ResponseFuture {
             inner: future,
+            context,
             span,
             meters: self.meters.clone(),
-            start: Instant::now(),
         }
     }
 }
@@ -136,9 +139,9 @@ where
 pub struct ResponseFuture<F> {
     #[pin]
     inner: F,
+    context: OtelContext,
     span: Span,
     meters: Option<OtelMeters>,
-    start: Instant,
 }
 
 impl<Fut, B, E> Future for ResponseFuture<Fut>
@@ -152,22 +155,19 @@ where
         let this = self.project();
         let _guard = this.span.enter();
         let result = ready!(this.inner.poll(cx));
+
         if let Some(meters) = this.meters.as_ref() {
-            let route = this
-                .span
-                .field("http.route")
-                .map_or_else(|| String::new(), |f| f.to_string());
-            let method = this
-                .span
-                .field("http.request.method")
-                .map_or_else(|| String::new(), |f| f.to_string());
-            let ep_attribute = [KeyValue::new("method", method.clone()), KeyValue::new("route", route)];
+            let ep_attribute = [
+                KeyValue::new("method", this.context.method.to_string()),
+                KeyValue::new("route", this.context.route.clone()),
+            ];
 
             if result.is_err() {
                 meters.error_counter.add(1, &ep_attribute);
             }
 
-            let duration = Instant::now().duration_since(*this.start).as_secs_f64();
+            meters.request_counter.add(1, &ep_attribute);
+            let duration = Instant::now().duration_since(this.context.start).as_secs_f64();
             meters.request_duration.record(duration, &ep_attribute);
         }
 
