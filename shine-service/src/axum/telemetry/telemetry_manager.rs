@@ -1,14 +1,15 @@
 use crate::axum::telemetry::OtelLayer;
 use opentelemetry::{
     global,
-    metrics::{Meter, MeterProvider as _},
+    metrics::{Meter, MeterProvider},
     trace::{TraceError, Tracer, TracerProvider as _},
+    KeyValue,
 };
 use opentelemetry_sdk::{
-    metrics::MeterProvider,
+    //metrics::MeterProvider,
+    metrics::SdkMeterProvider,
     runtime::Tokio,
-    trace::config as otConfig,
-    trace::{Sampler, TracerProvider},
+    trace::{config as otConfig, Sampler, TracerProvider},
     Resource,
 };
 use opentelemetry_semantic_conventions as otconv;
@@ -50,8 +51,8 @@ pub enum Tracing {
     StdOut,
 
     /// Enable Jaeger tracing (https://www.jaegertracing.io)
-    #[cfg(feature = "ot_jaeger")]
-    Jaeger,
+    #[cfg(feature = "ot_otlp")]
+    Otlp,
 
     /// Enable Zipkin tracing (https://zipkin.io/)
     #[cfg(feature = "ot_zipkin")]
@@ -174,7 +175,10 @@ impl TelemetryManager {
     }
 
     fn install_telemetry(&mut self, service_name: &str, config: &TelemetryConfig) -> Result<(), TelemetryBuildError> {
-        let resource = Resource::new(vec![otconv::resource::SERVICE_NAME.string(service_name.to_string())]);
+        let resource = Resource::new(vec![KeyValue::new(
+            otconv::resource::SERVICE_NAME,
+            service_name.to_string(),
+        )]);
 
         // Install meter provider for opentelemetry
         if config.metrics {
@@ -183,7 +187,7 @@ impl TelemetryManager {
                 .with_registry(prom_registry.clone())
                 .build()
                 .unwrap();
-            let provider = MeterProvider::builder()
+            let provider = SdkMeterProvider::builder()
                 .with_resource(resource.clone())
                 .with_reader(exporter)
                 .build();
@@ -199,20 +203,22 @@ impl TelemetryManager {
                     .with_simple_exporter(exporter)
                     .with_config(otConfig().with_resource(resource).with_sampler(Sampler::AlwaysOn))
                     .build();
-                let tracer = provider.versioned_tracer(
-                    "opentelemetry-stdout",
-                    Some(env!("CARGO_PKG_VERSION")),
-                    Some(otconv::SCHEMA_URL),
-                    None,
-                );
+                let tracer = provider
+                    .tracer_builder("opentelemetry-stdout")
+                    .with_version(env!("CARGO_PKG_VERSION"))
+                    .with_schema_url(otconv::SCHEMA_URL)
+                    .build();
                 let _ = global::set_tracer_provider(provider);
                 self.install_tracing_layer(config, Self::ot_layer(tracer))?;
             }
-            #[cfg(feature = "ot_jaeger")]
-            Tracing::Jaeger => {
-                let tracer = opentelemetry_jaeger::new_agent_pipeline()
+            #[cfg(feature = "ot_otlp")]
+            Tracing::Otlp => {
+                let exporter = opentelemetry_otlp::new_exporter().tonic();
+                //.with_endpoint("http://localhost:4317");
+                let tracer = opentelemetry_otlp::new_pipeline()
+                    .tracing()
+                    .with_exporter(exporter)
                     .with_trace_config(otConfig().with_resource(resource))
-                    .with_service_name(service_name.to_string())
                     .install_batch(Tokio)?;
                 self.install_tracing_layer(config, Self::ot_layer(tracer))?;
             }
