@@ -21,6 +21,8 @@ pub struct CoreConfig {
 
 impl CoreConfig {
     pub fn new(stage: &str) -> Result<Self, ConfigError> {
+        log::info!("Loading configuration for {}", stage);
+
         let builder = Config::builder()
             .add_source(File::from(Path::new(&format!("server_config.{}.json", stage))))
             .add_source(File::from(Path::new("server_version.json")));
