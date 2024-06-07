@@ -36,7 +36,17 @@ $ cargo test -p shine-service
 
 ### **Jaeger**
 
-TBD: It was not tested since the deprecation of the opentelemetry-jaeger crate, see: <https://github.com/open-telemetry/opentelemetry-rust/issues/995>
+Set up telemetry configuration:
+```json
+  {
+    "telemetry": {
+      "tracing": {
+        "type": "openTelemetryProtocol",
+        "endpoint": "http://localhost:4317"
+      }
+    }
+  }
+```
 
 Launch the application:
 ```shell
