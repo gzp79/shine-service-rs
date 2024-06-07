@@ -30,7 +30,7 @@ impl CoreConfig {
         let s = builder.build()?;
         let cfg: CoreConfig = s.try_deserialize()?;
 
-        log::info!("pre-init configuration: {:#?}", cfg);
+        log::debug!("pre-init configuration: {:#?}", cfg);
         Ok(cfg)
     }
 

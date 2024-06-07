@@ -5,8 +5,8 @@ use opentelemetry::{
     trace::{TraceError, Tracer, TracerProvider as _},
     KeyValue,
 };
+use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
-    //metrics::MeterProvider,
     metrics::SdkMeterProvider,
     runtime::Tokio,
     trace::{config as otConfig, Sampler, TracerProvider},
@@ -52,7 +52,7 @@ pub enum Tracing {
 
     /// Enable Jaeger tracing (https://www.jaegertracing.io)
     #[cfg(feature = "ot_otlp")]
-    Otlp,
+    OpenTelemetryProtocol { endpoint: String },
 
     /// Enable Zipkin tracing (https://zipkin.io/)
     #[cfg(feature = "ot_zipkin")]
@@ -212,9 +212,8 @@ impl TelemetryManager {
                 self.install_tracing_layer(config, Self::ot_layer(tracer))?;
             }
             #[cfg(feature = "ot_otlp")]
-            Tracing::Otlp => {
-                let exporter = opentelemetry_otlp::new_exporter().tonic();
-                //.with_endpoint("http://localhost:4317");
+            Tracing::OpenTelemetryProtocol { endpoint } => {
+                let exporter = opentelemetry_otlp::new_exporter().tonic().with_endpoint(endpoint);
                 let tracer = opentelemetry_otlp::new_pipeline()
                     .tracing()
                     .with_exporter(exporter)
