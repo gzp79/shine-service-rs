@@ -14,7 +14,7 @@ shine-test-macros = { path = "../shine-test-macros", version = "0.1.0" }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.11"
 color-backtrace = "0.6"
-tokio = { version = "1.19", features = ["macros"] }
+tokio = { version = "1.38", features = ["macros"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-logger = "0.2"

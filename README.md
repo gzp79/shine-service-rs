@@ -1,5 +1,11 @@
-# Shared crates for the shone project
+# Shared crates for the shine project
 
+Some common crates for the shine project:
+- shine-test
+- shine-test-macros
+- shine-macros
+- shine-service
+  
 ## shine-test
 
 Automatically initializing logging and other handy features for the shine engine tests.
@@ -26,9 +32,9 @@ $ docker compose up --build
 $ cargo test -p shine-service
 ```
 
-### Telemetry
+## Telemetry
 
-#### **Jaeger**
+### **Jaeger**
 
 TBD: It was not tested since the deprecation of the opentelemetry-jaeger crate, see: <https://github.com/open-telemetry/opentelemetry-rust/issues/995>
 
@@ -39,4 +45,14 @@ $ docker run -d -p16686:16686 -p4317:4317 -e COLLECTOR_OTLP_ENABLED=true jaegert
 
 # View spans
 $ firefox http://localhost:16686/
+```
+
+# Cargo extensions
+
+These are the most frequently used cargo extensions in the shine project:
+
+```shell
+cargo install cargo-outdated
+cargo install cargo-tree
+cargo install trunk
 ```
