@@ -152,7 +152,6 @@ pub enum PGCreatePoolError {
 pub async fn create_postgres_pool(cns: &str) -> Result<PGConnectionPool, PGCreatePoolError> {
     let certs = cacerts::get_root_cert_store().map_err(PGCreatePoolError::CertError)?;
     let tls_config = rustls::ClientConfig::builder()
-        .with_safe_defaults()
         .with_root_certificates(certs)
         .with_no_client_auth();
     let tls = MakeRustlsConnect::new(tls_config);

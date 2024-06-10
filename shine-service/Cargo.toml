@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["ot_jaeger", "ot_zipkin", "ot_app_insight"]
+default = ["ot_otlp", "ot_zipkin", "ot_app_insight"]
 
-ot_jaeger = ["opentelemetry-jaeger"]
+ot_otlp = ["opentelemetry-otlp"]
 ot_zipkin = ["opentelemetry-zipkin"]
 ot_app_insight = ["reqwest", "opentelemetry-application-insights"]
 
@@ -21,7 +21,7 @@ serde_json = "1.0"
 time = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.6", features = ["v4", "serde"] }
-base64 = "0.21"
+base64 = "0.22"
 hex = "0.4"
 ring = "0.17"
 primal-check = "0.3"
@@ -31,40 +31,40 @@ pin-project = "1.1"
 futures = "0.3"
 async-trait = "0.1"
 tokio = {version = "1.34", features = ["macros", "rt-multi-thread", "signal"] }
-rustls = "0.21" 
-rustls-native-certs = "0.6"
-rustls-pemfile = "1.0"
+rustls = "0.23" 
+rustls-native-certs = "0.7"
+rustls-pemfile = "2.1"
 reqwest = { version = "0.11", optional = true }
 
-validator = { version = "0.16", features = ["derive"] }
+validator = { version = "0.18", features = ["derive"] }
 utoipa = { version = "4.1", features = ["uuid", "chrono", "debug"] }
 
 bb8 = "0.8"
-bb8-redis = "0.14"
-redis = { version = "0.24.0", features = ["tokio-comp", "tokio-rustls-comp"] }
+bb8-redis = "0.15"
+redis = { version = "0.25.0", features = ["tokio-comp", "tokio-rustls-comp"] }
 bb8-postgres = "0.8"
 tokio-postgres = { version = "0.7", features = ["with-uuid-1", "with-chrono-0_4", "runtime"] }
-tokio-rustls = "0.25"
-tokio-postgres-rustls = "0.10"
+tokio-rustls = "0.26"
+tokio-postgres-rustls = "0.12"
 postgres-from-row = "0.5"
 
-azure_core = { version = "0.18" }
-azure_identity = { version = "0.18" }
-azure_security_keyvault = { version = "0.18" }
+azure_core = { version = "0.20" }
+azure_identity = { version = "0.20" }
+azure_security_keyvault = { version = "0.20" }
 
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-opentelemetry = "0.22"
-tracing-opentelemetry-instrumentation-sdk = "0.15"
+tracing-opentelemetry = "0.24"
+tracing-opentelemetry-instrumentation-sdk = "0.18"
 prometheus = "0.13"
-opentelemetry = "0.21"
-opentelemetry-semantic-conventions = "0.13"
-opentelemetry_sdk = { version = "0.21", features = ["metrics"] }
-opentelemetry-stdout = { version = "0.2", features = ["logs", "trace"] }
-opentelemetry-jaeger = { version = "0.20", features = ["rt-tokio"], optional = true }
-opentelemetry-zipkin = { version ="0.19", features = ["reqwest-client"], default-features = false, optional = true }
-opentelemetry-prometheus = "0.14"
-opentelemetry-application-insights = { version = "0.29", optional = true }
+opentelemetry = "0.23"
+opentelemetry-semantic-conventions = "0.15"
+opentelemetry_sdk = { version = "0.23", features = ["rt-tokio", "metrics"] }
+opentelemetry-stdout = { version = "0.4", features = ["logs", "trace"] }
+opentelemetry-otlp = { version = "0.16", features = ["tokio", "tonic"], optional = true }
+opentelemetry-zipkin = { version ="0.21", features = ["reqwest-client"], default-features = false, optional = true }
+opentelemetry-prometheus = "0.16"
+opentelemetry-application-insights = { version = "0.32", features = ["reqwest-client-rustls"], optional = true }
 
 
 tower = "0.4"

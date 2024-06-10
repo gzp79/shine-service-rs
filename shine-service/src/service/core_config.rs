@@ -1,6 +1,6 @@
 use crate::azure::azure_keyvault_config::AzureKeyvaultConfigSource;
 use azure_core::auth::TokenCredential;
-use azure_identity::{AzureCliCredential, EnvironmentCredential};
+use azure_identity::{AzureCliCredential, EnvironmentCredential, TokenCredentialOptions};
 use config::{builder::AsyncState, Config, ConfigBuilder, ConfigError, Environment, File};
 use serde::{Deserialize, Serialize};
 use std::{env, path::Path, sync::Arc};
@@ -21,6 +21,8 @@ pub struct CoreConfig {
 
 impl CoreConfig {
     pub fn new(stage: &str) -> Result<Self, ConfigError> {
+        log::info!("Loading configuration for {}", stage);
+
         let builder = Config::builder()
             .add_source(File::from(Path::new(&format!("server_config.{}.json", stage))))
             .add_source(File::from(Path::new("server_version.json")));
@@ -28,7 +30,7 @@ impl CoreConfig {
         let s = builder.build()?;
         let cfg: CoreConfig = s.try_deserialize()?;
 
-        log::info!("pre-init configuration: {:#?}", cfg);
+        log::debug!("pre-init configuration: {:#?}", cfg);
         Ok(cfg)
     }
 
@@ -98,8 +100,13 @@ impl CoreConfig {
                     })?;
                     if azure_credentials.is_none() {
                         azure_credentials = if env::var("AZURE_TENANT_ID").is_ok() {
+                            let credentials = EnvironmentCredential::create(TokenCredentialOptions::default())
+                                .map_err(|err| ConfigError::FileParse {
+                                    uri: Some(url.to_owned()),
+                                    cause: err.into(),
+                                })?;
                             log::info!("Getting azure credentials through environment...");
-                            Some(Arc::new(EnvironmentCredential::default()))
+                            Some(Arc::new(credentials))
                         } else {
                             log::info!("Getting azure credentials through azure cli...");
                             Some(Arc::new(AzureCliCredential::new()))

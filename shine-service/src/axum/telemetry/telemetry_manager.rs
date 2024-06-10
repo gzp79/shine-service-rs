@@ -1,20 +1,21 @@
 use crate::axum::telemetry::OtelLayer;
 use opentelemetry::{
     global,
-    metrics::{Meter, MeterProvider as _},
+    metrics::{Meter, MeterProvider, MetricsError},
     trace::{TraceError, Tracer, TracerProvider as _},
+    KeyValue,
 };
+use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
-    metrics::MeterProvider,
+    metrics::SdkMeterProvider,
     runtime::Tokio,
-    trace::config as otConfig,
-    trace::{Sampler, TracerProvider},
+    trace::{config as otConfig, Sampler, TracerProvider},
     Resource,
 };
 use opentelemetry_semantic_conventions as otconv;
 use prometheus::{Encoder, Registry as PromRegistry, TextEncoder};
 use serde::{Deserialize, Serialize};
-use std::{error::Error as StdError, sync::Arc};
+use std::{borrow::Cow, error::Error as StdError, sync::Arc};
 use thiserror::Error as ThisError;
 use tracing::{subscriber::SetGlobalDefaultError, Dispatch, Subscriber};
 use tracing_opentelemetry::{OpenTelemetryLayer, PreSampledTracer};
@@ -37,6 +38,8 @@ pub enum TelemetryBuildError {
     AppInsightConfigError(Box<dyn StdError + Send + Sync + 'static>),
     #[error(transparent)]
     TraceError(#[from] TraceError),
+    #[error(transparent)]
+    MetricsError(#[from] MetricsError),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -50,8 +53,8 @@ pub enum Tracing {
     StdOut,
 
     /// Enable Jaeger tracing (https://www.jaegertracing.io)
-    #[cfg(feature = "ot_jaeger")]
-    Jaeger,
+    #[cfg(feature = "ot_otlp")]
+    OpenTelemetryProtocol { endpoint: String },
 
     /// Enable Zipkin tracing (https://zipkin.io/)
     #[cfg(feature = "ot_zipkin")]
@@ -93,10 +96,16 @@ where
 pub struct TraceReconfigureError(String);
 
 #[derive(Clone)]
+pub struct Metrics {
+    registry: PromRegistry,
+    provider: SdkMeterProvider,
+    service_meter: Meter,
+}
+
+#[derive(Clone)]
 pub struct TelemetryManager {
     reconfigure: Option<Arc<dyn DynHandle>>,
-    meter: Option<Meter>,
-    prom_registry: Option<PromRegistry>,
+    metrics: Option<Metrics>,
 }
 
 impl TelemetryManager {
@@ -104,8 +113,7 @@ impl TelemetryManager {
     pub async fn new(service_name: &str, config: &TelemetryConfig) -> Result<Self, TelemetryBuildError> {
         let mut service = TelemetryManager {
             reconfigure: None,
-            meter: None,
-            prom_registry: None,
+            metrics: None,
         };
         service.install_telemetry(service_name, config)?;
         Ok(service)
@@ -174,50 +182,61 @@ impl TelemetryManager {
     }
 
     fn install_telemetry(&mut self, service_name: &str, config: &TelemetryConfig) -> Result<(), TelemetryBuildError> {
-        let resource = Resource::new(vec![otconv::resource::SERVICE_NAME.string(service_name.to_string())]);
+        let resource = Resource::new(vec![KeyValue::new(
+            otconv::resource::SERVICE_NAME,
+            service_name.to_string(),
+        )]);
 
         // Install meter provider for opentelemetry
         if config.metrics {
-            let prom_registry = prometheus::Registry::new();
+            log::info!("Registering metrics...");
+            let registry = prometheus::Registry::new();
             let exporter = opentelemetry_prometheus::exporter()
-                .with_registry(prom_registry.clone())
-                .build()
-                .unwrap();
-            let provider = MeterProvider::builder()
+                .with_registry(registry.clone())
+                .build()?;
+            let provider = SdkMeterProvider::builder()
                 .with_resource(resource.clone())
                 .with_reader(exporter)
                 .build();
-            self.meter = Some(provider.meter(service_name.to_string()));
-            self.prom_registry = Some(prom_registry);
+            let service_meter = provider.meter(service_name.to_string());
+            self.metrics = Some(Metrics {
+                registry,
+                provider,
+                service_meter,
+            });
         }
 
         // Install tracer provider for opentelemetry
         match &config.tracing {
             Tracing::StdOut => {
+                log::info!("Registering StdOut tracing...");
                 let exporter = opentelemetry_stdout::SpanExporter::default();
                 let provider = TracerProvider::builder()
                     .with_simple_exporter(exporter)
                     .with_config(otConfig().with_resource(resource).with_sampler(Sampler::AlwaysOn))
                     .build();
-                let tracer = provider.versioned_tracer(
-                    "opentelemetry-stdout",
-                    Some(env!("CARGO_PKG_VERSION")),
-                    Some(otconv::SCHEMA_URL),
-                    None,
-                );
+                let tracer = provider
+                    .tracer_builder("opentelemetry-stdout")
+                    .with_version(env!("CARGO_PKG_VERSION"))
+                    .with_schema_url(otconv::SCHEMA_URL)
+                    .build();
                 let _ = global::set_tracer_provider(provider);
                 self.install_tracing_layer(config, Self::ot_layer(tracer))?;
             }
-            #[cfg(feature = "ot_jaeger")]
-            Tracing::Jaeger => {
-                let tracer = opentelemetry_jaeger::new_agent_pipeline()
+            #[cfg(feature = "ot_otlp")]
+            Tracing::OpenTelemetryProtocol { endpoint } => {
+                log::info!("Registering OpenTelemetryProtocol tracing...");
+                let exporter = opentelemetry_otlp::new_exporter().tonic().with_endpoint(endpoint);
+                let tracer = opentelemetry_otlp::new_pipeline()
+                    .tracing()
+                    .with_exporter(exporter)
                     .with_trace_config(otConfig().with_resource(resource))
-                    .with_service_name(service_name.to_string())
                     .install_batch(Tokio)?;
                 self.install_tracing_layer(config, Self::ot_layer(tracer))?;
             }
             #[cfg(feature = "ot_zipkin")]
             Tracing::Zipkin => {
+                log::info!("Registering Zipkin tracing...");
                 let tracer = opentelemetry_zipkin::new_pipeline()
                     .with_trace_config(otConfig().with_resource(resource))
                     .with_service_name(service_name.to_string())
@@ -226,6 +245,7 @@ impl TelemetryManager {
             }
             #[cfg(feature = "ot_app_insight")]
             Tracing::AppInsight { instrumentation_key } => {
+                log::info!("Registering AppInsight tracing...");
                 let tracer = opentelemetry_application_insights::new_pipeline_from_connection_string(
                     instrumentation_key.clone(),
                 )
@@ -236,7 +256,10 @@ impl TelemetryManager {
                 .install_batch(Tokio);
                 self.install_tracing_layer(config, Self::ot_layer(tracer))?;
             }
-            Tracing::None => self.install_tracing_layer(config, EmptyLayer)?,
+            Tracing::None => {
+                log::info!("Registering no tracing...");
+                self.install_tracing_layer(config, EmptyLayer)?;
+            }
         };
 
         Ok(())
@@ -249,15 +272,19 @@ impl TelemetryManager {
         Ok(())
     }
 
-    pub fn meter(&self) -> Option<&Meter> {
-        self.meter.as_ref()
+    pub fn create_meter<S: Into<Cow<'static, str>>>(&self, metrics_scope: S) -> Option<Meter> {
+        self.metrics.as_ref().map(|m| m.provider.meter(metrics_scope))
+    }
+
+    pub fn service_meter(&self) -> Option<&Meter> {
+        self.metrics.as_ref().map(|m| &m.service_meter)
     }
 
     pub fn metrics(&self) -> String {
-        if let Some(registry) = &self.prom_registry {
+        if let Some(metrics) = &self.metrics {
             let mut buffer = vec![];
             let encoder = TextEncoder::new();
-            let metric_families = registry.gather();
+            let metric_families = metrics.registry.gather();
             encoder.encode(&metric_families, &mut buffer).unwrap();
             String::from_utf8(buffer).unwrap()
         } else {
@@ -268,8 +295,8 @@ impl TelemetryManager {
     pub fn to_layer(&self) -> OtelLayer {
         //todo: read route filtering from config
         let mut layer = OtelLayer::default();
-        if let Some(meter) = &self.meter {
-            layer = layer.meter(meter.clone())
+        if let Some(metrics) = &self.metrics {
+            layer = layer.meter(metrics.service_meter.clone())
         }
         layer
     }

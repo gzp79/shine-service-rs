@@ -1,11 +1,38 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as Tokens;
 use quote::quote;
-use syn::{parse_macro_input, Attribute, AttributeArgs, Ident, ItemFn, ReturnType};
+use syn::{
+    meta,
+    parse::{Error as ParseError, Parser},
+    parse_macro_input, Ident, ItemFn, LitStr, ReturnType,
+};
+
+#[derive(Default)]
+struct TestAttributes {
+    pub serial: Option<LitStr>,
+}
+
+impl TestAttributes {
+    fn parse(input: TokenStream) -> Result<Self, ParseError> {
+        let mut attrs = Self::default();
+
+        let parser = meta::parser(|meta| {
+            if meta.path.is_ident("serial") {
+                attrs.serial = Some(meta.value()?.parse()?);
+                Ok(())
+            } else {
+                Err(meta.error("unsupported tea property"))
+            }
+        });
+
+        parser.parse(input)?;
+        Ok(attrs)
+    }
+}
 
 #[proc_macro_attribute]
 pub fn test(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let args = parse_macro_input!(attr as AttributeArgs);
+    let attrs = TestAttributes::parse(attr).unwrap();
     let input = parse_macro_input!(item as ItemFn);
 
     let mut test_decors = Vec::new();
@@ -19,13 +46,11 @@ pub fn test(attr: TokenStream, item: TokenStream) -> TokenStream {
         test_decors.push(quote! { #[cfg_attr(not(target_arch = "wasm32"), ::core::prelude::v1::test)] });
     };
 
-    let test_attrs = match args.as_slice() {
-        [] => input.attrs.clone(),
-        //todo: serial, or serial = "key" -> input.attrs.clone().append("#[::serial_test::serial(key)]")
-        _ => panic!("unsupported attributes supplied: {args:?}"),
-    };
+    if let Some(serial) = attrs.serial {
+        test_decors.push(quote! { #[::shine_test::serial_test::serial(#serial)] });
+    }
 
-    expand_wrapper(&test_decors, &test_attrs, &input)
+    expand_wrapper(&test_decors, &input)
 }
 
 /// Expand the wasm bindgen configuration, By default all tests are running in (headless) browser.
@@ -39,7 +64,7 @@ fn expand_wasm_bindgen_test_configure(test_name: &Ident) -> Tokens {
 }
 
 /// Emit code for a wrapper function around a test function.
-fn expand_wrapper(test_decors: &[Tokens], test_attrs: &[Attribute], input: &ItemFn) -> TokenStream {
+fn expand_wrapper(test_decors: &[Tokens], input: &ItemFn) -> TokenStream {
     let async_token = &input.sig.asyncness;
     let await_token = async_token.map(|_| quote! {.await});
 
@@ -59,7 +84,6 @@ fn expand_wrapper(test_decors: &[Tokens], test_attrs: &[Attribute], input: &Item
       #wasm_bindgen_test_configure
 
       #(#test_decors)*
-      #(#test_attrs)*
       #async_token fn #test_name() #ret {
         #async_token fn test_impl() #ret {
           #body

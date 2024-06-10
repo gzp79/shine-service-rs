@@ -19,7 +19,7 @@ use utoipa::{
 pub fn add_default_components(doc: &mut OpenApi) {
     #[derive(ToSchema)]
     #[schema(value_type = String)]
-    struct Url(String);
+    struct Url;
 
     #[derive(ToResponse)]
     #[allow(dead_code)]
