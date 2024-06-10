@@ -1,6 +1,7 @@
-use std::borrow::Cow;
-
-use crate::{axum::Problem, utils::serde_string};
+use crate::{
+    axum::{IntoProblem, Problem, ProblemConfig, ProblemDetail},
+    utils::serde_string,
+};
 use axum::{
     async_trait,
     extract::{
@@ -8,10 +9,10 @@ use axum::{
         FromRequest, FromRequestParts, Path, Query, Request,
     },
     http::request::Parts,
-    response::{IntoResponse, Response},
-    Json, RequestExt,
+    Extension, Json, RequestExt, RequestPartsExt,
 };
 use serde::{de::DeserializeOwned, Serialize};
+use std::{borrow::Cow, sync::Arc};
 use thiserror::Error as ThisError;
 use validator::{Validate, ValidationError, ValidationErrors};
 
@@ -30,13 +31,6 @@ pub trait ValidationErrorEx {
     fn into_constraint_error(self, field: &'static str) -> InputError
     where
         Self: Sized;
-
-    fn into_constraint_problem(self, field: &'static str) -> Problem
-    where
-        Self: Sized,
-    {
-        self.into_constraint_error(field).into_problem()
-    }
 }
 
 impl ValidationErrorEx for ValidationError {
@@ -86,32 +80,24 @@ pub enum InputError {
     Constraint(ValidationErrors),
 }
 
-impl InputError {
-    fn into_problem(self) -> Problem {
+impl IntoProblem for InputError {
+    fn into_problem(&self, _config: &ProblemConfig) -> Problem {
         match self {
-            InputError::PathFormat(err) => Problem::bad_request()
-                .with_type("path_format_error")
-                .with_detail(format!("{err:?}")),
-            InputError::QueryFormat(err) => Problem::bad_request()
-                .with_type("query_format_error")
-                .with_detail(format!("{err}")),
-            InputError::JsonFormat(JsonRejection::JsonDataError(err)) => Problem::bad_request()
-                .with_type("body_format_error")
-                .with_detail(err.body_text()),
-            InputError::JsonFormat(JsonRejection::JsonSyntaxError(err)) => Problem::bad_request()
-                .with_type("body_format_error")
-                .with_detail(err.body_text()),
-            InputError::JsonFormat(err) => Problem::internal_error().with_detail(format!("{err}")),
-            InputError::Constraint(detail) => Problem::bad_request()
-                .with_type("validation_error")
-                .with_object_detail(&detail),
+            InputError::PathFormat(err) => {
+                Problem::bad_request("path_format_error").with_detail_msg(format!("{err:?}"))
+            }
+            InputError::QueryFormat(err) => {
+                Problem::bad_request("query_format_error").with_detail_msg(format!("{err}"))
+            }
+            InputError::JsonFormat(JsonRejection::JsonDataError(err)) => {
+                Problem::bad_request("body_format_error").with_detail_msg(err.body_text())
+            }
+            InputError::JsonFormat(JsonRejection::JsonSyntaxError(err)) => {
+                Problem::bad_request("body_format_error").with_detail_msg(err.body_text())
+            }
+            InputError::JsonFormat(err) => Problem::internal_error().with_detail_msg(format!("{err}")),
+            InputError::Constraint(detail) => Problem::bad_request("validation_error").with_detail(&detail),
         }
-    }
-}
-
-impl IntoResponse for InputError {
-    fn into_response(self) -> Response {
-        self.into_problem().into_response()
     }
 }
 
@@ -125,13 +111,19 @@ where
     S: Send + Sync,
     T: DeserializeOwned + Send + Validate,
 {
-    type Rejection = InputError;
+    type Rejection = ProblemDetail<InputError>;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let Extension(problem_config) = parts
+            .extract::<Extension<Arc<ProblemConfig>>>()
+            .await
+            .expect("Missing ProblemConfig extension");
+
         let Path(data) = Path::<T>::from_request_parts(parts, state)
             .await
-            .map_err(InputError::PathFormat)?;
-        data.validate().map_err(InputError::Constraint)?;
+            .map_err(|err| ProblemDetail::from(&problem_config, InputError::PathFormat(err)))?;
+        data.validate()
+            .map_err(|err| ProblemDetail::from(&problem_config, InputError::Constraint(err)))?;
         Ok(Self(data))
     }
 }
@@ -146,13 +138,19 @@ where
     S: Send + Sync,
     T: 'static + DeserializeOwned + Validate,
 {
-    type Rejection = InputError;
+    type Rejection = ProblemDetail<InputError>;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let Extension(problem_config) = parts
+            .extract::<Extension<Arc<ProblemConfig>>>()
+            .await
+            .expect("Missing ProblemConfig extension");
+
         let Query(data) = Query::<T>::from_request_parts(parts, state)
             .await
-            .map_err(InputError::QueryFormat)?;
-        data.validate().map_err(InputError::Constraint)?;
+            .map_err(|err| ProblemDetail::from(&problem_config, InputError::QueryFormat(err)))?;
+        data.validate()
+            .map_err(|err| ProblemDetail::from(&problem_config, InputError::Constraint(err)))?;
         Ok(Self(data))
     }
 }
@@ -168,11 +166,20 @@ where
     J: Validate + 'static,
     Json<J>: FromRequest<(), Rejection = JsonRejection>,
 {
-    type Rejection = InputError;
+    type Rejection = ProblemDetail<InputError>;
 
-    async fn from_request(req: Request, _state: &S) -> Result<Self, Self::Rejection> {
-        let Json(data) = req.extract::<Json<J>, _>().await.map_err(InputError::JsonFormat)?;
-        data.validate().map_err(InputError::Constraint)?;
+    async fn from_request(mut req: Request, _state: &S) -> Result<Self, Self::Rejection> {
+        let Extension(problem_config) = req
+            .extract_parts::<Extension<Arc<ProblemConfig>>>()
+            .await
+            .expect("Missing ProblemConfig extension");
+
+        let Json(data) = req
+            .extract::<Json<J>, _>()
+            .await
+            .map_err(|err| ProblemDetail::from(&problem_config, InputError::JsonFormat(err)))?;
+        data.validate()
+            .map_err(|err| ProblemDetail::from(&problem_config, InputError::Constraint(err)))?;
         Ok(Self(data))
     }
 }

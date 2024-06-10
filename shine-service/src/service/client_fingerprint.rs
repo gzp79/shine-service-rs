@@ -1,11 +1,7 @@
-use crate::axum::Problem;
-use axum::{
-    async_trait,
-    extract::FromRequestParts,
-    http::request::Parts,
-    response::{IntoResponse, Response},
-    RequestPartsExt,
-};
+use std::sync::Arc;
+
+use crate::axum::{IntoProblem, Problem, ProblemConfig, ProblemDetail};
+use axum::{async_trait, extract::FromRequestParts, http::request::Parts, Extension, RequestPartsExt};
 use axum_extra::{headers::UserAgent, TypedHeader};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD as B64, Engine};
 use ring::digest::{self, Context};
@@ -17,17 +13,11 @@ pub enum ClientFingerprintError {
     MissingUserAgent,
 }
 
-impl ClientFingerprintError {
-    fn into_problem(self) -> Problem {
+impl IntoProblem for ClientFingerprintError {
+    fn into_problem(&self, _config: &ProblemConfig) -> Problem {
         match self {
-            ClientFingerprintError::MissingUserAgent => Problem::bad_request().with_type("missing_user_agent"),
+            ClientFingerprintError::MissingUserAgent => Problem::bad_request("missing_user_agent"),
         }
-    }
-}
-
-impl IntoResponse for ClientFingerprintError {
-    fn into_response(self) -> Response {
-        self.into_problem().into_response()
     }
 }
 
@@ -70,9 +60,14 @@ impl<S> FromRequestParts<S> for ClientFingerprint
 where
     S: Send + Sync,
 {
-    type Rejection = ClientFingerprintError;
+    type Rejection = ProblemDetail<ClientFingerprintError>;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let Extension(problem_config) = parts
+            .extract::<Extension<Arc<ProblemConfig>>>()
+            .await
+            .expect("Missing ProblemConfig extension");
+
         let agent = parts
             .extract::<TypedHeader<UserAgent>>()
             .await
@@ -82,7 +77,7 @@ where
         if agent.is_empty() {
             Ok(ClientFingerprint::unknown())
         } else {
-            ClientFingerprint::from_agent(agent)
+            ClientFingerprint::from_agent(agent).map_err(|err| ProblemDetail::from(&problem_config, err))
         }
     }
 }

@@ -1,14 +1,8 @@
 use crate::{
-    axum::Problem,
+    axum::{IntoProblem, Problem, ProblemConfig, ProblemDetail},
     service::{serde_session_key, RedisConnectionError, RedisConnectionPool, SessionKey},
 };
-use axum::{
-    async_trait,
-    extract::FromRequestParts,
-    http::request::Parts,
-    response::{IntoResponse, Response},
-    Extension, RequestPartsExt,
-};
+use axum::{async_trait, extract::FromRequestParts, http::request::Parts, Extension, RequestPartsExt};
 use axum_extra::extract::{cookie::Key, SignedCookieJar};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD as B64, Engine};
 use chrono::{DateTime, Utc};
@@ -38,9 +32,18 @@ pub enum UserSessionError {
     RedisError(#[from] redis::RedisError),
 }
 
-impl IntoResponse for UserSessionError {
-    fn into_response(self) -> Response {
-        Problem::unauthorized().with_detail(self).into_response()
+impl IntoProblem for UserSessionError {
+    fn into_problem(&self, _config: &ProblemConfig) -> Problem {
+        match self {
+            UserSessionError::Unauthenticated
+            | UserSessionError::InvalidSecret(..)
+            | UserSessionError::SessionExpired
+            | UserSessionError::SessionCompromised => Problem::unauthorized().with_detail_msg(format!("{:?}", self)),
+            UserSessionError::RedisPoolError(err) => Problem::unauthorized().with_detail_msg("Redis connection error"),
+            //.with_internal_detail(err),
+            UserSessionError::RedisError(err) => Problem::unauthorized().with_detail_msg("Redis error"),
+            //.with_internal_detail(err),
+        }
     }
 }
 
@@ -96,9 +99,13 @@ impl<S> FromRequestParts<S> for CheckedCurrentUser
 where
     S: Send + Sync,
 {
-    type Rejection = UserSessionError;
+    type Rejection = ProblemDetail<UserSessionError>;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let Extension(problem_config) = parts
+            .extract::<Extension<Arc<ProblemConfig>>>()
+            .await
+            .expect("Missing ProblemConfig extension");
         let Extension(validator) = parts
             .extract::<Extension<Arc<UserSessionValidator>>>()
             .await
@@ -106,7 +113,10 @@ where
 
         let unchecked = parts.extract::<UncheckedCurrentUser>().await?;
         let mut user = unchecked.0;
-        validator.update(&mut user).await?;
+        validator
+            .update(&mut user)
+            .await
+            .map_err(|err| ProblemDetail::from(&problem_config, err))?;
         Ok(CheckedCurrentUser(user))
     }
 }
@@ -143,25 +153,35 @@ impl<S> FromRequestParts<S> for UncheckedCurrentUser
 where
     S: Send + Sync,
 {
-    type Rejection = UserSessionError;
+    type Rejection = ProblemDetail<UserSessionError>;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let Extension(problem_config) = parts
+            .extract::<Extension<Arc<ProblemConfig>>>()
+            .await
+            .expect("Missing ProblemConfig extension");
         let Extension(validator) = parts
             .extract::<Extension<Arc<UserSessionValidator>>>()
             .await
             .expect("Missing UserSessionValidator extension");
 
-        let fingerprint = parts.extract::<ClientFingerprint>().await.unwrap();
+        let fingerprint = parts
+            .extract::<ClientFingerprint>()
+            .await
+            .map_err(|err| ProblemDetail::from(&problem_config, UserSessionError::from(err)))?;
 
         let jar = SignedCookieJar::from_headers(&parts.headers, validator.cookie_secret.clone());
         let user = jar
             .get(&validator.cookie_name)
             .and_then(|cookie| serde_json::from_str::<CurrentUser>(cookie.value()).ok())
-            .ok_or(UserSessionError::Unauthenticated)?;
+            .ok_or_else(|| ProblemDetail::from(&problem_config, UserSessionError::Unauthenticated))?;
 
         // perform the least minimal validation
         if user.fingerprint != fingerprint.as_str() {
-            Err(UserSessionError::SessionCompromised)
+            Err(ProblemDetail::from(
+                &problem_config,
+                UserSessionError::SessionCompromised,
+            ))
         } else {
             Ok(UncheckedCurrentUser(user))
         }

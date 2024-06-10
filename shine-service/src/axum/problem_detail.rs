@@ -1,136 +1,102 @@
 use axum::{
-    http::StatusCode,
+    http::{StatusCode, Uri},
     response::{IntoResponse, Response},
     Json,
 };
 use serde::Serialize;
-use serde_json::Value;
-use std::{collections::HashMap, error::Error};
+use serde_json::Value as JsonValue;
 
-/// Implementation of a Problem Details response for HTTP APIs, as defined
-/// in [RFC-7807](https://datatracker.ietf.org/doc/html/rfc7807).
+#[derive(Clone)]
+pub struct ProblemConfig {
+    pub include_internal: bool,
+}
+
+#[derive(Debug, Serialize)]
 pub struct Problem {
-    /// The status code of the problem.
-    pub status_code: StatusCode,
-    /// The actual body of the problem.
-    pub body: HashMap<String, Value>,
+    #[serde(rename = "status")]
+    status: StatusCode,
+    #[serde(rename = "type")]
+    ty: &'static str,
+    #[serde(rename = "instance")]
+    instance: Option<Uri>,
+    #[serde(rename = "detail")]
+    detail: JsonValue,
 }
 
 impl Problem {
-    pub fn new(status_code: StatusCode) -> Self {
-        Self {
-            status_code,
-            body: HashMap::new(),
+    pub fn new(status: StatusCode, ty: &'static str) -> Self {
+        Problem {
+            status,
+            ty,
+            instance: None,
+            detail: JsonValue::Null,
         }
+    }
+
+    pub fn bad_request(ty: &'static str) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, ty)
     }
 
     pub fn unauthorized() -> Self {
-        Self::new(StatusCode::UNAUTHORIZED).with_type("unauthorized")
-    }
-
-    pub fn forbidden() -> Self {
-        Self::new(StatusCode::FORBIDDEN).with_type("forbidden")
-    }
-
-    pub fn bad_request() -> Self {
-        Self::new(StatusCode::BAD_REQUEST)
-    }
-
-    pub fn not_found() -> Self {
-        Self::new(StatusCode::NOT_FOUND).with_type("not_found")
+        Self::new(StatusCode::UNAUTHORIZED, "unauthorized")
     }
 
     pub fn internal_error() -> Self {
-        Self::new(StatusCode::INTERNAL_SERVER_ERROR).with_type("server_error")
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, "server_error")
     }
 
-    pub fn internal_error_from<E: Error>(err: E) -> Self {
-        Self::internal_error().with_detail(format!("{err:?}"))
+    pub fn with_instance<I: Into<Uri>>(self, instance: I) -> Self {
+        Self {
+            instance: Some(instance.into()),
+            ..self
+        }
     }
 
-    /// Specify the "type" to use for the problem.
-    ///
-    /// # Parameters
-    /// - `value` - The value to use for the "type"
-    #[must_use]
-    pub fn with_type<S: ToString>(self, value: S) -> Self {
-        self.with_string_value("type", value)
+    pub fn with_detail<S: Serialize>(self, detail: S) -> Self {
+        Self {
+            detail: serde_json::to_value(detail).unwrap(),
+            ..self
+        }
     }
 
-    /// Specify the "title" to use for the problem.
-    ///
-    /// # Parameters
-    /// - `value` - The value to use for the "title"
-    #[must_use]
-    pub fn with_title<S: ToString>(self, value: S) -> Self {
-        self.with_string_value("title", value)
-    }
-
-    /// Specify the "detail" as a message to use for the problem.
-    ///
-    /// # Parameters
-    /// - `value` - The value to use for the "detail"
-    #[must_use]
-    pub fn with_detail<S: ToString>(self, value: S) -> Self {
-        self.with_string_value("detail", value)
-    }
-
-    /// Specify the "detail" to use for the problem.
-    ///
-    /// # Parameters
-    /// - `value` - The value to use for the "detail"
-    #[must_use]
-    pub fn with_object_detail<S: Serialize>(self, value: &S) -> Self {
-        self.with_object_value("detail", value)
-    }
-
-    /// Specify the "instance" to use for the problem.
-    ///
-    /// # Parameters
-    /// - `value` - The value to use for the "instance"
-    #[must_use]
-    pub fn with_instance<S: ToString>(self, value: S) -> Self {
-        self.with_string_value("instance", value)
-    }
-
-    /// Specify an arbitrary value string to include in the problem.
-    ///
-    /// # Parameters
-    /// - `key` - The key for the value.
-    /// - `value` - The value itself.
-    #[must_use]
-    pub fn with_string_value<V: ToString>(mut self, key: &str, value: V) -> Self {
-        self.body.insert(key.to_owned(), value.to_string().into());
-
-        self
-    }
-
-    /// Specify an arbitrary value object to include in the problem.
-    ///
-    /// # Parameters
-    /// - `key` - The key for the value.
-    /// - `value` - The value itself.
-    #[must_use]
-    pub fn with_object_value<V: Serialize>(mut self, key: &str, value: &V) -> Self {
-        let value = serde_json::to_value(value).expect("Failed to serialize ");
-        self.body.insert(key.to_owned(), value);
-
-        self
+    pub fn with_detail_msg<S: ToString>(self, detail: S) -> Self {
+        Self {
+            detail: JsonValue::String(detail.to_string()),
+            ..self
+        }
     }
 }
 
-impl IntoResponse for Problem {
-    fn into_response(self) -> Response {
-        if self.body.is_empty() {
-            self.status_code.into_response()
-        } else {
-            let body = Json(self.body);
-            let mut response = (self.status_code, body).into_response();
+/// Implementation of a Problem Details response for HTTP APIs, as defined
+/// in [RFC-7807](https://datatracker.ietf.org/doc/html/rfc7807).
+pub trait IntoProblem {
+    fn into_problem(&self, config: &ProblemConfig) -> Problem;
+}
 
-            response
-                .headers_mut()
-                .insert("content-type", "application/problem+json".parse().unwrap());
-            response
+pub struct ProblemDetail<P: IntoProblem> {
+    pub config: ProblemConfig,
+    pub problem: P,
+}
+
+impl<P: IntoProblem> ProblemDetail<P> {
+    pub fn from(config: &ProblemConfig, problem: P) -> Self {
+        Self {
+            config: config.clone(),
+            problem,
         }
+    }
+}
+
+impl<P: IntoProblem> IntoResponse for ProblemDetail<P> {
+    fn into_response(self) -> Response {
+        let ProblemDetail { problem, config } = self;
+
+        let body = problem.into_problem(&config);
+        let mut response = (body.status, Json(body)).into_response();
+
+        response
+            .headers_mut()
+            .insert("content-type", "application/problem+json".parse().unwrap());
+        response
     }
 }
