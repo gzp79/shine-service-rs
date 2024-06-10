@@ -3275,6 +3275,7 @@ dependencies = [
  "tracing-opentelemetry 0.24.0",
  "tracing-opentelemetry-instrumentation-sdk",
  "tracing-subscriber",
+ "url",
  "utoipa",
  "uuid",
  "validator",

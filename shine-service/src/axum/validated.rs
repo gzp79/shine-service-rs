@@ -81,22 +81,18 @@ pub enum InputError {
 }
 
 impl IntoProblem for InputError {
-    fn into_problem(self, _config: &ProblemConfig) -> Problem {
+    fn into_problem(self, config: &ProblemConfig) -> Problem {
         match self {
-            InputError::PathFormat(err) => {
-                Problem::bad_request("path_format_error").with_detail_msg(format!("{err:?}"))
-            }
-            InputError::QueryFormat(err) => {
-                Problem::bad_request("query_format_error").with_detail_msg(format!("{err}"))
-            }
+            InputError::PathFormat(err) => Problem::bad_request("path_format_error").with_detail(format!("{err:?}")),
+            InputError::QueryFormat(err) => Problem::bad_request("query_format_error").with_detail(format!("{err}")),
             InputError::JsonFormat(JsonRejection::JsonDataError(err)) => {
-                Problem::bad_request("body_format_error").with_detail_msg(err.body_text())
+                Problem::bad_request("body_format_error").with_detail(err.body_text())
             }
             InputError::JsonFormat(JsonRejection::JsonSyntaxError(err)) => {
-                Problem::bad_request("body_format_error").with_detail_msg(err.body_text())
+                Problem::bad_request("body_format_error").with_detail(err.body_text())
             }
-            InputError::JsonFormat(err) => Problem::internal_error().with_detail_msg(format!("{err}")),
-            InputError::Constraint(detail) => Problem::bad_request("validation_error").with_detail(detail),
+            InputError::JsonFormat(err) => Problem::internal_error(config, "Json error", err),
+            InputError::Constraint(detail) => Problem::bad_request("validation_error").with_public_extension(detail),
         }
     }
 }

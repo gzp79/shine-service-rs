@@ -21,38 +21,28 @@ use uuid::Uuid;
 pub enum UserSessionError {
     #[error("Missing session info")]
     Unauthenticated,
-    #[error("Invalid session secret: {0}")]
+    #[error("Invalid session secret")]
     InvalidSecret(String),
     #[error("Session expired")]
     SessionExpired,
-    #[error(transparent)]
+    #[error("Fingerprint error")]
     ClientFingerprintError(#[from] ClientFingerprintError),
-    #[error("Failed to get pooled redis connection")]
-    RedisPoolError(#[source] RedisConnectionError),
     #[error("Session is compromised")]
     SessionCompromised,
-    #[error(transparent)]
+    #[error("Failed to get redis connection")]
+    RedisPoolError(#[source] RedisConnectionError),
+    #[error("Redis error")]
     RedisError(#[from] redis::RedisError),
 }
 
 impl IntoProblem for UserSessionError {
     fn into_problem(self, config: &ProblemConfig) -> Problem {
         match self {
-            UserSessionError::Unauthenticated
-            | UserSessionError::InvalidSecret(..)
-            | UserSessionError::SessionExpired
-            | UserSessionError::SessionCompromised => Problem::unauthorized().with_detail_msg(format!("{:?}", self)),
-            UserSessionError::ClientFingerprintError(err) => err.into_problem(config),
-            UserSessionError::RedisPoolError(err) => Problem::unauthorized().with_confidential(
-                config,
-                |problem| problem.with_detail_msg("Redis connection error"),
-                |problem| problem.with_detail(format!("Redis connection error: {:?}", err)),
-            ),
-            UserSessionError::RedisError(err) => Problem::unauthorized().with_confidential(
-                config,
-                |problem| problem.with_detail_msg("Redis error"),
-                |problem| problem.with_detail(format!("Redis error: {:?}", err)),
-            ),
+            UserSessionError::RedisPoolError(err) => Problem::internal_error(config, "Redis connection error", err),
+            UserSessionError::RedisError(err) => Problem::internal_error(config, "Redis error", err),
+            _ => Problem::unauthorized()
+                .with_detail(self.to_string())
+                .with_extension(config, format!("{:#?}", self)),
         }
     }
 }
