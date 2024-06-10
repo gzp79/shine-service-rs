@@ -17,7 +17,7 @@ use prometheus::{Encoder, Registry as PromRegistry, TextEncoder};
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, error::Error as StdError, sync::Arc};
 use thiserror::Error as ThisError;
-use tracing::{subscriber::SetGlobalDefaultError, Dispatch, Subscriber};
+use tracing::{level_filters::LevelFilter, subscriber::SetGlobalDefaultError, Dispatch, Subscriber};
 use tracing_opentelemetry::{OpenTelemetryLayer, PreSampledTracer};
 use tracing_subscriber::{
     filter::{EnvFilter, ParseError},
@@ -138,7 +138,9 @@ impl TelemetryManager {
         let env_filter = if let Some(default_level) = &config.default_level {
             EnvFilter::builder().parse(default_level)?
         } else {
-            EnvFilter::from_default_env()
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::WARN.into())
+                .from_env_lossy()
         };
 
         if config.allow_reconfigure {
