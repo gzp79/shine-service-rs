@@ -1,3 +1,4 @@
+use crate::utils::{serde_status_code, serde_uri};
 use axum::{
     http::{StatusCode, Uri},
     response::{IntoResponse, Response},
@@ -13,11 +14,11 @@ pub struct ProblemConfig {
 
 #[derive(Debug, Serialize)]
 pub struct Problem {
-    #[serde(rename = "status")]
+    #[serde(rename = "status", serialize_with = "serde_status_code::serialize")]
     status: StatusCode,
     #[serde(rename = "type")]
     ty: &'static str,
-    #[serde(rename = "instance")]
+    #[serde(rename = "instance", serialize_with = "serde_uri::serialize_opt")]
     instance: Option<Uri>,
     #[serde(rename = "detail")]
     detail: JsonValue,
@@ -65,12 +66,24 @@ impl Problem {
             ..self
         }
     }
+
+    pub fn with_confidential<FL, FF>(self, config: &ProblemConfig, minimal: FL, full: FF) -> Self
+    where
+        FL: FnOnce(Self) -> Self,
+        FF: FnOnce(Self) -> Self,
+    {
+        if config.include_internal {
+            full(self)
+        } else {
+            minimal(self)
+        }
+    }
 }
 
 /// Implementation of a Problem Details response for HTTP APIs, as defined
 /// in [RFC-7807](https://datatracker.ietf.org/doc/html/rfc7807).
 pub trait IntoProblem {
-    fn into_problem(&self, config: &ProblemConfig) -> Problem;
+    fn into_problem(self, config: &ProblemConfig) -> Problem;
 }
 
 pub struct ProblemDetail<P: IntoProblem> {

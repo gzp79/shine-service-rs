@@ -12,7 +12,7 @@ use axum::{
     Extension, Json, RequestExt, RequestPartsExt,
 };
 use serde::{de::DeserializeOwned, Serialize};
-use std::{borrow::Cow, sync::Arc};
+use std::borrow::Cow;
 use thiserror::Error as ThisError;
 use validator::{Validate, ValidationError, ValidationErrors};
 
@@ -81,7 +81,7 @@ pub enum InputError {
 }
 
 impl IntoProblem for InputError {
-    fn into_problem(&self, _config: &ProblemConfig) -> Problem {
+    fn into_problem(self, _config: &ProblemConfig) -> Problem {
         match self {
             InputError::PathFormat(err) => {
                 Problem::bad_request("path_format_error").with_detail_msg(format!("{err:?}"))
@@ -96,7 +96,7 @@ impl IntoProblem for InputError {
                 Problem::bad_request("body_format_error").with_detail_msg(err.body_text())
             }
             InputError::JsonFormat(err) => Problem::internal_error().with_detail_msg(format!("{err}")),
-            InputError::Constraint(detail) => Problem::bad_request("validation_error").with_detail(&detail),
+            InputError::Constraint(detail) => Problem::bad_request("validation_error").with_detail(detail),
         }
     }
 }
@@ -115,7 +115,7 @@ where
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let Extension(problem_config) = parts
-            .extract::<Extension<Arc<ProblemConfig>>>()
+            .extract::<Extension<ProblemConfig>>()
             .await
             .expect("Missing ProblemConfig extension");
 
@@ -142,7 +142,7 @@ where
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let Extension(problem_config) = parts
-            .extract::<Extension<Arc<ProblemConfig>>>()
+            .extract::<Extension<ProblemConfig>>()
             .await
             .expect("Missing ProblemConfig extension");
 
@@ -170,7 +170,7 @@ where
 
     async fn from_request(mut req: Request, _state: &S) -> Result<Self, Self::Rejection> {
         let Extension(problem_config) = req
-            .extract_parts::<Extension<Arc<ProblemConfig>>>()
+            .extract_parts::<Extension<ProblemConfig>>()
             .await
             .expect("Missing ProblemConfig extension");
 

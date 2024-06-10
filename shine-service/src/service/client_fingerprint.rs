@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::axum::{IntoProblem, Problem, ProblemConfig, ProblemDetail};
 use axum::{async_trait, extract::FromRequestParts, http::request::Parts, Extension, RequestPartsExt};
 use axum_extra::{headers::UserAgent, TypedHeader};
@@ -14,7 +12,7 @@ pub enum ClientFingerprintError {
 }
 
 impl IntoProblem for ClientFingerprintError {
-    fn into_problem(&self, _config: &ProblemConfig) -> Problem {
+    fn into_problem(self, _config: &ProblemConfig) -> Problem {
         match self {
             ClientFingerprintError::MissingUserAgent => Problem::bad_request("missing_user_agent"),
         }
@@ -64,7 +62,7 @@ where
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let Extension(problem_config) = parts
-            .extract::<Extension<Arc<ProblemConfig>>>()
+            .extract::<Extension<ProblemConfig>>()
             .await
             .expect("Missing ProblemConfig extension");
 

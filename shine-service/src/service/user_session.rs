@@ -1,6 +1,9 @@
 use crate::{
     axum::{IntoProblem, Problem, ProblemConfig, ProblemDetail},
-    service::{serde_session_key, RedisConnectionError, RedisConnectionPool, SessionKey},
+    service::{
+        serde_session_key, ClientFingerprint, ClientFingerprintError, RedisConnectionError, RedisConnectionPool,
+        SessionKey,
+    },
 };
 use axum::{async_trait, extract::FromRequestParts, http::request::Parts, Extension, RequestPartsExt};
 use axum_extra::extract::{cookie::Key, SignedCookieJar};
@@ -14,8 +17,6 @@ use std::{ops, sync::Arc};
 use thiserror::Error as ThisError;
 use uuid::Uuid;
 
-use super::ClientFingerprint;
-
 #[derive(Debug, ThisError)]
 pub enum UserSessionError {
     #[error("Missing session info")]
@@ -24,6 +25,8 @@ pub enum UserSessionError {
     InvalidSecret(String),
     #[error("Session expired")]
     SessionExpired,
+    #[error(transparent)]
+    ClientFingerprintError(#[from] ClientFingerprintError),
     #[error("Failed to get pooled redis connection")]
     RedisPoolError(#[source] RedisConnectionError),
     #[error("Session is compromised")]
@@ -33,16 +36,23 @@ pub enum UserSessionError {
 }
 
 impl IntoProblem for UserSessionError {
-    fn into_problem(&self, _config: &ProblemConfig) -> Problem {
+    fn into_problem(self, config: &ProblemConfig) -> Problem {
         match self {
             UserSessionError::Unauthenticated
             | UserSessionError::InvalidSecret(..)
             | UserSessionError::SessionExpired
             | UserSessionError::SessionCompromised => Problem::unauthorized().with_detail_msg(format!("{:?}", self)),
-            UserSessionError::RedisPoolError(err) => Problem::unauthorized().with_detail_msg("Redis connection error"),
-            //.with_internal_detail(err),
-            UserSessionError::RedisError(err) => Problem::unauthorized().with_detail_msg("Redis error"),
-            //.with_internal_detail(err),
+            UserSessionError::ClientFingerprintError(err) => err.into_problem(config),
+            UserSessionError::RedisPoolError(err) => Problem::unauthorized().with_confidential(
+                config,
+                |problem| problem.with_detail_msg("Redis connection error"),
+                |problem| problem.with_detail(format!("Redis connection error: {:?}", err)),
+            ),
+            UserSessionError::RedisError(err) => Problem::unauthorized().with_confidential(
+                config,
+                |problem| problem.with_detail_msg("Redis error"),
+                |problem| problem.with_detail(format!("Redis error: {:?}", err)),
+            ),
         }
     }
 }
@@ -103,7 +113,7 @@ where
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let Extension(problem_config) = parts
-            .extract::<Extension<Arc<ProblemConfig>>>()
+            .extract::<Extension<ProblemConfig>>()
             .await
             .expect("Missing ProblemConfig extension");
         let Extension(validator) = parts
@@ -157,7 +167,7 @@ where
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let Extension(problem_config) = parts
-            .extract::<Extension<Arc<ProblemConfig>>>()
+            .extract::<Extension<ProblemConfig>>()
             .await
             .expect("Missing ProblemConfig extension");
         let Extension(validator) = parts
@@ -168,7 +178,7 @@ where
         let fingerprint = parts
             .extract::<ClientFingerprint>()
             .await
-            .map_err(|err| ProblemDetail::from(&problem_config, UserSessionError::from(err)))?;
+            .map_err(|err| ProblemDetail::from(&problem_config, UserSessionError::from(err.problem)))?;
 
         let jar = SignedCookieJar::from_headers(&parts.headers, validator.cookie_secret.clone());
         let user = jar
