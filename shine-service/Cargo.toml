@@ -13,7 +13,8 @@ ot_app_insight = ["reqwest", "opentelemetry-application-insights"]
 [dependencies]
 log = "0.4"
 thiserror = "1.0"
-config = "0.14"
+# see https://github.com/mehcode/config-rs/issues/564
+config = "0.13"
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
