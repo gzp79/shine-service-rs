@@ -9,7 +9,7 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
     metrics::SdkMeterProvider,
     runtime::Tokio,
-    trace::{config as otConfig, Sampler, TracerProvider},
+    trace::{Config as OtConfig, Sampler, TracerProvider},
     Resource,
 };
 use opentelemetry_semantic_conventions as otconv;
@@ -215,7 +215,11 @@ impl TelemetryManager {
                 let exporter = opentelemetry_stdout::SpanExporter::default();
                 let provider = TracerProvider::builder()
                     .with_simple_exporter(exporter)
-                    .with_config(otConfig().with_resource(resource).with_sampler(Sampler::AlwaysOn))
+                    .with_config(
+                        OtConfig::default()
+                            .with_resource(resource)
+                            .with_sampler(Sampler::AlwaysOn),
+                    )
                     .build();
                 let tracer = provider
                     .tracer_builder("opentelemetry-stdout")
@@ -232,7 +236,7 @@ impl TelemetryManager {
                 let tracer = opentelemetry_otlp::new_pipeline()
                     .tracing()
                     .with_exporter(exporter)
-                    .with_trace_config(otConfig().with_resource(resource))
+                    .with_trace_config(OtConfig::default().with_resource(resource))
                     .install_batch(Tokio)?;
                 self.install_tracing_layer(config, Self::ot_layer(tracer))?;
             }
@@ -240,7 +244,7 @@ impl TelemetryManager {
             Tracing::Zipkin => {
                 log::info!("Registering Zipkin tracing...");
                 let tracer = opentelemetry_zipkin::new_pipeline()
-                    .with_trace_config(otConfig().with_resource(resource))
+                    .with_trace_config(OtConfig::default().with_resource(resource))
                     .with_service_name(service_name.to_string())
                     .install_batch(Tokio)?;
                 self.install_tracing_layer(config, Self::ot_layer(tracer))?;
@@ -252,7 +256,7 @@ impl TelemetryManager {
                     instrumentation_key.clone(),
                 )
                 .map_err(TelemetryBuildError::AppInsightConfigError)?
-                .with_trace_config(otConfig().with_resource(resource))
+                .with_trace_config(OtConfig::default().with_resource(resource))
                 .with_service_name(service_name.to_string())
                 .with_client(reqwest::Client::new())
                 .install_batch(Tokio);
