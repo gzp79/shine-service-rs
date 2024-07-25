@@ -81,7 +81,7 @@ impl Optimus {
 
 #[cfg(test)]
 mod test {
-    use super::Optimus;
+    use super::*;
     use shine_test::test;
 
     #[test]
