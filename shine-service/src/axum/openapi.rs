@@ -70,7 +70,7 @@ fn to_swagger(path: &str) -> String {
     re.replace_all(path, "{${1}}").to_string()
 }
 
-pub struct ApiEndpoint<S> {
+pub struct ApiEndpoint<S = ()> {
     method: ApiMethod,
     path: String,
     pub operation: OperationBuilder,
