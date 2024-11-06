@@ -1,8 +1,7 @@
-use crate::service::cacerts;
+use crate::service::cacerts::{get_root_cert_store, CertError};
 use async_trait::async_trait;
 use bb8::{ManageConnection, Pool as BB8Pool, PooledConnection, RunError};
 use bb8_postgres::PostgresConnectionManager;
-use std::io;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -146,11 +145,11 @@ pub enum PGCreatePoolError {
     #[error(transparent)]
     PgError(#[from] PGError),
     #[error("Certificate load error")]
-    CertError(#[source] io::Error),
+    CertError(#[source] CertError),
 }
 
 pub async fn create_postgres_pool(cns: &str) -> Result<PGConnectionPool, PGCreatePoolError> {
-    let certs = cacerts::get_root_cert_store().map_err(PGCreatePoolError::CertError)?;
+    let certs = get_root_cert_store().map_err(PGCreatePoolError::CertError)?;
     let tls_config = rustls::ClientConfig::builder()
         .with_root_certificates(certs)
         .with_no_client_auth();

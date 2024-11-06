@@ -107,14 +107,14 @@ where
             .await
             .expect("Missing ProblemConfig extension");
         let Extension(validator) = parts
-            .extract::<Extension<Arc<UserSessionValidator>>>()
+            .extract::<Extension<Arc<UserSessionCacheReader>>>()
             .await
-            .expect("Missing UserSessionValidator extension");
+            .expect("Missing UserSessionCacheReader extension");
 
         let unchecked = parts.extract::<UncheckedCurrentUser>().await?;
         let mut user = unchecked.0;
         validator
-            .update(&mut user)
+            .refresh_user(&mut user)
             .await
             .map_err(|err| ProblemDetail::from(&problem_config, err))?;
         Ok(CheckedCurrentUser(user))
@@ -161,9 +161,9 @@ where
             .await
             .expect("Missing ProblemConfig extension");
         let Extension(validator) = parts
-            .extract::<Extension<Arc<UserSessionValidator>>>()
+            .extract::<Extension<Arc<UserSessionCacheReader>>>()
             .await
-            .expect("Missing UserSessionValidator extension");
+            .expect("Missing UserSessionCacheReader extension");
 
         let fingerprint = parts
             .extract::<ClientFingerprint>()
@@ -188,16 +188,15 @@ where
     }
 }
 
-/// Add extra validation to the user session. While sessions are signed, this
-/// layer gets an up to date version from the identity service.
-pub struct UserSessionValidator {
+/// Handle the user data query in the redis cache.
+pub struct UserSessionCacheReader {
     cookie_name: String,
     cookie_secret: Key,
     key_prefix: String,
     redis: RedisConnectionPool,
 }
 
-impl UserSessionValidator {
+impl UserSessionCacheReader {
     pub fn new(
         name_suffix: Option<&str>,
         cookie_secret: &str,
@@ -224,9 +223,9 @@ impl UserSessionValidator {
         Extension(Arc::new(self))
     }
 
-    /// This is a duplicated and minimized version of session handling from the identity service
-    /// Introduce breaking change with great care as that can also break all the service.
-    async fn refresh_session_data(&self, user: &mut CurrentUser) -> Result<(), UserSessionError> {
+    /// Refresh the session data in the cache. It should be in sync with the identity service
+    /// and introduce any breaking change with great care as that can break authentication in all the service.
+    async fn refresh_user(&self, user: &mut CurrentUser) -> Result<(), UserSessionError> {
         #[derive(Serialize, Deserialize, Debug, RedisJsonValue)]
         #[serde(rename_all = "camelCase")]
         struct SessionSentinel {
@@ -284,7 +283,7 @@ impl UserSessionValidator {
             _ => return Err(UserSessionError::SessionExpired),
         };
 
-        // check the immutable
+        // check the fingerprint and other validations
         if user.fingerprint != sentinel.fingerprint
             || user.version > version
             || user.session_start != sentinel.created_at
@@ -295,11 +294,6 @@ impl UserSessionValidator {
         user.name = data.name;
         user.roles = data.roles;
         user.version = version;
-        Ok(())
-    }
-
-    async fn update(&self, user: &mut CurrentUser) -> Result<(), UserSessionError> {
-        self.refresh_session_data(user).await?;
         Ok(())
     }
 }

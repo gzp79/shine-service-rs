@@ -5,12 +5,11 @@ use axum::{
     Router,
 };
 use regex::Regex;
-use std::collections::btree_map::Entry;
 use utoipa::{
     openapi::{
         path::{OperationBuilder, Parameter, ParameterIn, PathItemBuilder},
         request_body::RequestBodyBuilder,
-        ComponentsBuilder, Content, ContentBuilder, OpenApi, OpenApiBuilder, PathItemType, Ref, Response,
+        ComponentsBuilder, Content, ContentBuilder, HttpMethod, OpenApi, OpenApiBuilder, PathsBuilder, Ref, Response,
         ResponseBuilder,
     },
     IntoParams, PartialSchema, ToResponse, ToSchema,
@@ -18,7 +17,7 @@ use utoipa::{
 
 pub fn add_default_components(doc: &mut OpenApi) {
     #[derive(ToSchema)]
-    #[schema(value_type = String)]
+    //#[schema(value_type = String)]
     struct Url;
 
     #[derive(ToResponse)]
@@ -45,13 +44,13 @@ pub enum ApiMethod {
     Delete,
 }
 
-impl From<ApiMethod> for PathItemType {
+impl From<ApiMethod> for HttpMethod {
     fn from(value: ApiMethod) -> Self {
         match value {
-            ApiMethod::Get => PathItemType::Get,
-            ApiMethod::Post => PathItemType::Post,
-            ApiMethod::Put => PathItemType::Put,
-            ApiMethod::Delete => PathItemType::Delete,
+            ApiMethod::Get => HttpMethod::Get,
+            ApiMethod::Post => HttpMethod::Post,
+            ApiMethod::Put => HttpMethod::Put,
+            ApiMethod::Delete => HttpMethod::Delete,
         }
     }
 }
@@ -156,11 +155,12 @@ where
     #[must_use]
     pub fn with_json_request<T>(mut self) -> Self
     where
-        for<'a> T: ToSchema<'a>,
+        T: ToSchema,
     {
-        let (name, schema) = <T as ToSchema>::schema();
-        self.components = self.components.schema(name, schema);
-        let content = Content::new(Ref::from_schema_name(name));
+        let name = <T as ToSchema>::name();
+        let schema = <T as PartialSchema>::schema();
+        self.components = self.components.schema(name.clone(), schema);
+        let content = Content::new(Some(Ref::from_schema_name(name)));
         let request = RequestBodyBuilder::new().content("application/json", content).build();
         self.operation = self.operation.request_body(Some(request));
         self
@@ -176,9 +176,10 @@ where
     #[must_use]
     pub fn with_schema<T>(mut self) -> Self
     where
-        for<'a> T: ToSchema<'a>,
+        T: ToSchema,
     {
-        let (name, schema) = <T as ToSchema>::schema();
+        let name = <T as ToSchema>::name();
+        let schema = <T as PartialSchema>::schema();
         self.components = self.components.schema(name, schema);
         self
     }
@@ -186,11 +187,12 @@ where
     #[must_use]
     pub fn with_json_response<T>(mut self, code: StatusCode) -> Self
     where
-        for<'a> T: ToSchema<'a>,
+        T: ToSchema,
     {
-        let (name, schema) = <T as ToSchema>::schema();
-        self.components = self.components.schema(name, schema);
-        let content = ContentBuilder::new().schema(Ref::from_schema_name(name)).build();
+        let name = <T as ToSchema>::name();
+        let schema = <T as PartialSchema>::schema();
+        self.components = self.components.schema(name.clone(), schema);
+        let content = ContentBuilder::new().schema(Some(Ref::from_schema_name(name))).build();
         let response = ResponseBuilder::new().content("application/json", content).build();
         self.operation = self.operation.response(code.as_str().to_string(), response);
         self
@@ -198,7 +200,7 @@ where
 
     #[must_use]
     pub fn with_page_response<D: ToString>(mut self, description: D) -> Self {
-        let content = ContentBuilder::new().schema(String::schema()).build();
+        let content = ContentBuilder::new().schema(Some(String::schema())).build();
         let response = ResponseBuilder::new()
             .content("text/plan", content)
             .description(description.to_string())
@@ -226,20 +228,13 @@ where
             let components_doc = OpenApiBuilder::new().components(Some(components)).build();
             doc.merge(components_doc);
 
-            //note: doc.merge cannot be used for path as Paths is merged only the path and method is not considered
-            match doc.paths.paths.entry(to_swagger(&self.path)) {
-                Entry::Vacant(entry) => {
-                    entry.insert(PathItemBuilder::new().operation(method, operation).build());
-                }
-                Entry::Occupied(mut entry) => match entry.get_mut().operations.entry(method) {
-                    Entry::Vacant(item) => {
-                        item.insert(operation);
-                    }
-                    Entry::Occupied(_) => {
-                        log::warn!("[{:?}] {} already registered", self.method, self.path);
-                    }
-                },
-            };
+            let paths = PathsBuilder::new()
+                .path(
+                    to_swagger(&self.path),
+                    PathItemBuilder::new().operation(method, operation).build(),
+                )
+                .build();
+            doc.paths.merge(paths);
         }
 
         router.route(&self.path, self.router)
