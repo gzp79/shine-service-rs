@@ -15,7 +15,7 @@ use opentelemetry_sdk::{
 use opentelemetry_semantic_conventions as otconv;
 use prometheus::{Encoder, Registry as PromRegistry, TextEncoder};
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, error::Error as StdError, sync::Arc};
+use std::{error::Error as StdError, sync::Arc};
 use thiserror::Error as ThisError;
 use tracing::{level_filters::LevelFilter, subscriber::SetGlobalDefaultError, Dispatch, Subscriber};
 use tracing_opentelemetry::{OpenTelemetryLayer, PreSampledTracer};
@@ -110,7 +110,7 @@ pub struct TelemetryManager {
 
 impl TelemetryManager {
     /// Create a Service and initialize the global tracing logger
-    pub async fn new(service_name: &str, config: &TelemetryConfig) -> Result<Self, TelemetryBuildError> {
+    pub async fn new(service_name: &'static str, config: &TelemetryConfig) -> Result<Self, TelemetryBuildError> {
         let mut service = TelemetryManager {
             reconfigure: None,
             metrics: None,
@@ -183,7 +183,7 @@ impl TelemetryManager {
             .with_tracer(tracer)
     }
 
-    fn install_telemetry(&mut self, service_name: &str, config: &TelemetryConfig) -> Result<(), TelemetryBuildError> {
+    fn install_telemetry(&mut self, service_name: &'static str, config: &TelemetryConfig) -> Result<(), TelemetryBuildError> {
         let resource = Resource::new(vec![KeyValue::new(
             otconv::resource::SERVICE_NAME,
             service_name.to_string(),
@@ -192,15 +192,16 @@ impl TelemetryManager {
         // Install meter provider for opentelemetry
         if config.metrics {
             log::info!("Registering metrics...");
+            log::error!("Prometheous is disabled, waiting for https://github.com/open-telemetry/opentelemetry-rust/issues/2270...");
             let registry = prometheus::Registry::new();
-            let exporter = opentelemetry_prometheus::exporter()
+            /*TBD: let exporter = opentelemetry_prometheus::exporter()
                 .with_registry(registry.clone())
-                .build()?;
+                .build()?;*/
             let provider = SdkMeterProvider::builder()
                 .with_resource(resource.clone())
-                .with_reader(exporter)
+                //TBD: .with_reader(exporter)
                 .build();
-            let service_meter = provider.meter(service_name.to_string());
+            let service_meter = provider.meter(service_name);
             self.metrics = Some(Metrics {
                 registry,
                 provider,
@@ -237,7 +238,8 @@ impl TelemetryManager {
                     .tracing()
                     .with_exporter(exporter)
                     .with_trace_config(OtConfig::default().with_resource(resource))
-                    .install_batch(Tokio)?;
+                    .install_batch(Tokio)?
+                    .tracer("otlp");
                 self.install_tracing_layer(config, Self::ot_layer(tracer))?;
             }
             #[cfg(feature = "ot_zipkin")]
@@ -252,14 +254,13 @@ impl TelemetryManager {
             #[cfg(feature = "ot_app_insight")]
             Tracing::AppInsight { instrumentation_key } => {
                 log::info!("Registering AppInsight tracing...");
-                let tracer = opentelemetry_application_insights::new_pipeline_from_connection_string(
-                    instrumentation_key.clone(),
-                )
-                .map_err(TelemetryBuildError::AppInsightConfigError)?
-                .with_trace_config(OtConfig::default().with_resource(resource))
-                .with_service_name(service_name.to_string())
-                .with_client(reqwest::Client::new())
-                .install_batch(Tokio);
+                let key = instrumentation_key.clone();
+                let tracer = opentelemetry_application_insights::new_pipeline_from_connection_string(key)
+                    .map_err(TelemetryBuildError::AppInsightConfigError)?
+                    .with_trace_config(OtConfig::default().with_resource(resource))
+                    .with_service_name(service_name.to_string())
+                    .with_client(reqwest::Client::new())
+                    .install_batch(Tokio);
                 self.install_tracing_layer(config, Self::ot_layer(tracer))?;
             }
             Tracing::None => {
@@ -278,7 +279,7 @@ impl TelemetryManager {
         Ok(())
     }
 
-    pub fn create_meter<S: Into<Cow<'static, str>>>(&self, metrics_scope: S) -> Option<Meter> {
+    pub fn create_meter(&self, metrics_scope: &'static str) -> Option<Meter> {
         self.metrics.as_ref().map(|m| m.provider.meter(metrics_scope))
     }
 
