@@ -5,6 +5,9 @@ use axum::{
     Router,
 };
 use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::ops::{Deref, DerefMut};
+use url::Url;
 use utoipa::{
     openapi::{
         path::{OperationBuilder, Parameter, ParameterIn, PathItemBuilder},
@@ -15,21 +18,46 @@ use utoipa::{
     IntoParams, PartialSchema, ToResponse, ToSchema,
 };
 
-pub fn add_default_components(doc: &mut OpenApi) {
-    #[derive(ToSchema)]
-    //#[schema(value_type = String)]
-    struct Url;
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+#[schema(value_type = String )]
+#[schema(as = Url)]
+pub struct OpenApiUrl(Url);
 
+impl OpenApiUrl {
+    pub fn new(url: Url) -> Self {
+        Self(url)
+    }
+
+    pub fn into_url(self) -> Url {
+        self.0
+    }
+}
+
+impl Deref for OpenApiUrl {
+    type Target = Url;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for OpenApiUrl {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+pub fn add_default_components(doc: &mut OpenApi) {
     #[derive(ToResponse)]
     #[allow(dead_code)]
     struct Problem {
         r#type: String,
         detail: Option<serde_json::Value>,
-        instance: Option<Url>,
+        instance: Option<OpenApiUrl>,
     }
 
-    let components = ComponentsBuilder::new()
-        .schema_from::<Url>()
+    let components: utoipa::openapi::Components = ComponentsBuilder::new()
+        .schema_from::<OpenApiUrl>()
         .response_from::<Problem>()
         .build();
     let new_doc = OpenApiBuilder::new().components(Some(components)).build();
