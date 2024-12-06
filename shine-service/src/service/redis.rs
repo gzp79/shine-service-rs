@@ -1,11 +1,11 @@
-use bb8::{ManageConnection, Pool as BB8Pool, RunError};
-use bb8_redis::RedisConnectionManager;
+use bb8::{ManageConnection, Pool as BB8Pool, PooledConnection, RunError};
 
+pub use bb8_redis::RedisConnectionManager;
 pub use shine_macros::RedisJsonValue;
 
-pub type RedisConnection = RedisConnectionManager;
-pub type RedisConnectionError = RunError<<RedisConnection as ManageConnection>::Error>;
-pub type RedisConnectionPool = BB8Pool<RedisConnection>;
+pub type RedisConnectionError = RunError<<RedisConnectionManager as ManageConnection>::Error>;
+pub type RedisConnectionPool = BB8Pool<RedisConnectionManager>;
+pub type RedisPooledConnection<'a> = PooledConnection<'a, RedisConnectionManager>;
 
 pub async fn create_redis_pool(cns: &str) -> Result<RedisConnectionPool, RedisConnectionError> {
     let redis_manager = RedisConnectionManager::new(cns)?;

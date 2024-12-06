@@ -7,7 +7,7 @@ use axum::{
 use axum_extra::{headers::UserAgent, TypedHeader};
 use std::convert::Infallible;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 /// General client info used for human readable site identification
 pub struct SiteInfo {
     pub agent: String,
