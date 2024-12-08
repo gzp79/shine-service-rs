@@ -26,6 +26,7 @@ url = "2.3"
 base64 = "0.22"
 hex = "0.4"
 ring = "0.17"
+harsh = "0.2"
 primal-check = "0.3"
 regex = "1.10"
 
