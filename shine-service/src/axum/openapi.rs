@@ -115,6 +115,7 @@ where
         P: ApiPath,
         H: Handler<T, S>,
         T: 'static,
+        S: Clone + Send + Sync + 'static,        
     {
         let path = path.path();
 

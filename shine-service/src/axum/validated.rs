@@ -1,5 +1,5 @@
 use crate::{
-    axum::{IntoProblem, Problem, ProblemConfig, ProblemDetail},
+    axum::{ConfiguredProblem, IntoProblem, Problem, ProblemConfig},
     utils::serde_string,
 };
 use axum::{
@@ -107,7 +107,7 @@ where
     S: Send + Sync,
     T: DeserializeOwned + Send + Validate,
 {
-    type Rejection = ProblemDetail<InputError>;
+    type Rejection = ConfiguredProblem<InputError>;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let Extension(problem_config) = parts
@@ -117,9 +117,9 @@ where
 
         let Path(data) = Path::<T>::from_request_parts(parts, state)
             .await
-            .map_err(|err| ProblemDetail::from(&problem_config, InputError::PathFormat(err)))?;
+            .map_err(|err| problem_config.configure(InputError::PathFormat(err)))?;
         data.validate()
-            .map_err(|err| ProblemDetail::from(&problem_config, InputError::Constraint(err)))?;
+            .map_err(|err| problem_config.configure(InputError::Constraint(err)))?;
         Ok(Self(data))
     }
 }
@@ -134,7 +134,7 @@ where
     S: Send + Sync,
     T: 'static + DeserializeOwned + Validate,
 {
-    type Rejection = ProblemDetail<InputError>;
+    type Rejection = ConfiguredProblem<InputError>;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let Extension(problem_config) = parts
@@ -144,9 +144,9 @@ where
 
         let Query(data) = Query::<T>::from_request_parts(parts, state)
             .await
-            .map_err(|err| ProblemDetail::from(&problem_config, InputError::QueryFormat(err)))?;
+            .map_err(|err| problem_config.configure(InputError::QueryFormat(err)))?;
         data.validate()
-            .map_err(|err| ProblemDetail::from(&problem_config, InputError::Constraint(err)))?;
+            .map_err(|err| problem_config.configure(InputError::Constraint(err)))?;
         Ok(Self(data))
     }
 }
@@ -162,7 +162,7 @@ where
     J: Validate + 'static,
     Json<J>: FromRequest<(), Rejection = JsonRejection>,
 {
-    type Rejection = ProblemDetail<InputError>;
+    type Rejection = ConfiguredProblem<InputError>;
 
     async fn from_request(mut req: Request, _state: &S) -> Result<Self, Self::Rejection> {
         let Extension(problem_config) = req
@@ -173,9 +173,9 @@ where
         let Json(data) = req
             .extract::<Json<J>, _>()
             .await
-            .map_err(|err| ProblemDetail::from(&problem_config, InputError::JsonFormat(err)))?;
+            .map_err(|err| problem_config.configure(InputError::JsonFormat(err)))?;
         data.validate()
-            .map_err(|err| ProblemDetail::from(&problem_config, InputError::Constraint(err)))?;
+            .map_err(|err| problem_config.configure(InputError::Constraint(err)))?;
         Ok(Self(data))
     }
 }

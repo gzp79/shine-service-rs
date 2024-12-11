@@ -76,7 +76,8 @@ pub struct TelemetryConfig {
 }
 
 trait DynHandle: Send + Sync {
-    fn reconfigure(&self, config: String) -> Result<(), String>;
+    fn set_configuration(&self, config: String) -> Result<(), String>;
+    fn get_configuration(&self) -> Result<String, String>;
 }
 
 impl<L, S> DynHandle for Handle<L, S>
@@ -84,15 +85,24 @@ where
     L: 'static + Layer<S> + From<EnvFilter> + Send + Sync,
     S: Subscriber,
 {
-    fn reconfigure(&self, mut new_config: String) -> Result<(), String> {
+    fn set_configuration(&self, mut new_config: String) -> Result<(), String> {
         new_config.retain(|c| !c.is_whitespace());
         let new_filter = new_config.parse::<EnvFilter>().map_err(|e| format!("{}", e))?;
         self.reload(new_filter).map_err(|e| format!("{}", e))
     }
+
+    fn get_configuration(&self) -> Result<String, String> {
+        self.with_current(|layer| {
+            //let filter = layer.downcast_ref::<EnvFilter>().ok_or("No filter found")?;
+            //Ok(filter.to_string())
+            Err("Not implemented".to_string())
+        })
+        .map_err(|e| format!("{}", e))?
+    }
 }
 
 #[derive(Debug, ThisError)]
-#[error("Failed to update trace: {0}")]
+#[error("Failed to perform trace configuration operation: {0}")]
 pub struct TraceReconfigureError(String);
 
 #[derive(Clone)]
@@ -103,15 +113,15 @@ pub struct Metrics {
 }
 
 #[derive(Clone)]
-pub struct TelemetryManager {
+pub struct TelemetryService {
     reconfigure: Option<Arc<dyn DynHandle>>,
     metrics: Option<Metrics>,
 }
 
-impl TelemetryManager {
+impl TelemetryService {
     /// Create a Service and initialize the global tracing logger
     pub async fn new(service_name: &'static str, config: &TelemetryConfig) -> Result<Self, TelemetryBuildError> {
-        let mut service = TelemetryManager {
+        let mut service = TelemetryService {
             reconfigure: None,
             metrics: None,
         };
@@ -183,7 +193,11 @@ impl TelemetryManager {
             .with_tracer(tracer)
     }
 
-    fn install_telemetry(&mut self, service_name: &'static str, config: &TelemetryConfig) -> Result<(), TelemetryBuildError> {
+    fn install_telemetry(
+        &mut self,
+        service_name: &'static str,
+        config: &TelemetryConfig,
+    ) -> Result<(), TelemetryBuildError> {
         let resource = Resource::new(vec![KeyValue::new(
             otconv::resource::SERVICE_NAME,
             service_name.to_string(),
@@ -195,8 +209,8 @@ impl TelemetryManager {
             log::error!("Prometheous is disabled, waiting for https://github.com/open-telemetry/opentelemetry-rust/issues/2270...");
             let registry = prometheus::Registry::new();
             /*TBD: let exporter = opentelemetry_prometheus::exporter()
-                .with_registry(registry.clone())
-                .build()?;*/
+            .with_registry(registry.clone())
+            .build()?;*/
             let provider = SdkMeterProvider::builder()
                 .with_resource(resource.clone())
                 //TBD: .with_reader(exporter)
@@ -272,11 +286,19 @@ impl TelemetryManager {
         Ok(())
     }
 
-    pub fn reconfigure(&self, filter: String) -> Result<(), TraceReconfigureError> {
+    pub fn set_configuration(&self, filter: String) -> Result<(), TraceReconfigureError> {
         if let Some(reconfigure) = &self.reconfigure {
-            reconfigure.reconfigure(filter).map_err(TraceReconfigureError)?
+            reconfigure.set_configuration(filter).map_err(TraceReconfigureError)?
         }
         Ok(())
+    }
+
+    pub fn get_configuration(&self) -> Result<String, TraceReconfigureError> {
+        if let Some(reconfigure) = &self.reconfigure {
+            reconfigure.get_configuration().map_err(TraceReconfigureError)
+        } else {
+            Err(TraceReconfigureError("Reconfigure is not enabled".to_string()))
+        }
     }
 
     pub fn create_meter(&self, metrics_scope: &'static str) -> Option<Meter> {
@@ -299,7 +321,7 @@ impl TelemetryManager {
         }
     }
 
-    pub fn to_layer(&self) -> OtelLayer {
+    pub fn create_layer(&self) -> OtelLayer {
         //todo: read route filtering from config
         let mut layer = OtelLayer::default();
         if let Some(metrics) = &self.metrics {

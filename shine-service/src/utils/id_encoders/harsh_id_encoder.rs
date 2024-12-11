@@ -5,7 +5,7 @@ use super::{IdEncoder, IdEncoderError};
 pub struct HarshIdEncoder(Harsh);
 
 impl HarshIdEncoder {
-    pub fn new(salt: String) -> Result<Self, IdEncoderError> {
+    pub fn new(salt: &str) -> Result<Self, IdEncoderError> {
         const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz1234567890";
         const SEPARATORS: &[u8] = b"cfhistu";
 

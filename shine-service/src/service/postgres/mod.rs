@@ -12,6 +12,8 @@ pub use self::pg_type::*;
 #[macro_export]
 macro_rules! pg_prepared_statement {
     ($id:ident => $stmt:expr, [$($pid:ident:$pty:ty),*]) => {
+
+        #[derive(Clone, Copy, Debug)]
         struct $id($crate::service::PGStatementId);
 
         impl $id {

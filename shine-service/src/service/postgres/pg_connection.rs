@@ -1,5 +1,4 @@
 use crate::service::cacerts::{get_root_cert_store, CertError};
-use async_trait::async_trait;
 use bb8::{ManageConnection, Pool as BB8Pool, PooledConnection, RunError};
 use bb8_postgres::PostgresConnectionManager;
 use std::ops::Deref;
@@ -107,7 +106,6 @@ impl PGConnectionManager {
     }
 }
 
-#[async_trait]
 impl bb8::ManageConnection for PGConnectionManager {
     type Connection = PGConnection<PGRawClient>;
     type Error = PGError;
@@ -163,5 +161,5 @@ pub async fn create_postgres_pool(cns: &str) -> Result<PGConnectionPool, PGCreat
         .build(postgres_manager)
         .await?;
 
-    Ok(postgres)
-}
+    Ok(postgres) 
+ }

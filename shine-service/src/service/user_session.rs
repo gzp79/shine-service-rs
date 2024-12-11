@@ -1,5 +1,5 @@
 use crate::{
-    axum::{IntoProblem, Problem, ProblemConfig, ProblemDetail},
+    axum::{ConfiguredProblem, IntoProblem, Problem, ProblemConfig},
     service::{
         serde_session_key, ClientFingerprint, ClientFingerprintError, RedisConnectionError, RedisConnectionPool,
         SessionKey,
@@ -99,7 +99,7 @@ impl<S> FromRequestParts<S> for CheckedCurrentUser
 where
     S: Send + Sync,
 {
-    type Rejection = ProblemDetail<UserSessionError>;
+    type Rejection = ConfiguredProblem<UserSessionError>;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let Extension(problem_config) = parts
@@ -116,7 +116,7 @@ where
         validator
             .refresh_user(&mut user)
             .await
-            .map_err(|err| ProblemDetail::from(&problem_config, err))?;
+            .map_err(|err| problem_config.configure(err))?;
         Ok(CheckedCurrentUser(user))
     }
 }
@@ -153,7 +153,7 @@ impl<S> FromRequestParts<S> for UncheckedCurrentUser
 where
     S: Send + Sync,
 {
-    type Rejection = ProblemDetail<UserSessionError>;
+    type Rejection = ConfiguredProblem<UserSessionError>;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let Extension(problem_config) = parts
@@ -168,20 +168,17 @@ where
         let fingerprint = parts
             .extract::<ClientFingerprint>()
             .await
-            .map_err(|err| ProblemDetail::from(&problem_config, UserSessionError::from(err.problem)))?;
+            .map_err(|err| problem_config.configure(UserSessionError::from(err.problem)))?;
 
         let jar = SignedCookieJar::from_headers(&parts.headers, validator.cookie_secret.clone());
         let user = jar
             .get(&validator.cookie_name)
             .and_then(|cookie| serde_json::from_str::<CurrentUser>(cookie.value()).ok())
-            .ok_or_else(|| ProblemDetail::from(&problem_config, UserSessionError::Unauthenticated))?;
+            .ok_or_else(|| problem_config.configure(UserSessionError::Unauthenticated))?;
 
         // perform the least minimal validation
         if user.fingerprint != fingerprint.as_str() {
-            Err(ProblemDetail::from(
-                &problem_config,
-                UserSessionError::SessionCompromised,
-            ))
+            Err(problem_config.configure(UserSessionError::SessionCompromised))
         } else {
             Ok(UncheckedCurrentUser(user))
         }

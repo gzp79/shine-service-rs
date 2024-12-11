@@ -1,4 +1,4 @@
-use crate::axum::{IntoProblem, Problem, ProblemConfig, ProblemDetail};
+use crate::axum::{ConfiguredProblem, IntoProblem, Problem, ProblemConfig};
 use axum::{async_trait, extract::FromRequestParts, http::request::Parts, Extension, RequestPartsExt};
 use axum_extra::{headers::UserAgent, TypedHeader};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD as B64, Engine};
@@ -58,7 +58,7 @@ impl<S> FromRequestParts<S> for ClientFingerprint
 where
     S: Send + Sync,
 {
-    type Rejection = ProblemDetail<ClientFingerprintError>;
+    type Rejection = ConfiguredProblem<ClientFingerprintError>;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let Extension(problem_config) = parts
@@ -75,7 +75,7 @@ where
         if agent.is_empty() {
             Ok(ClientFingerprint::unknown())
         } else {
-            ClientFingerprint::from_agent(agent).map_err(|err| ProblemDetail::from(&problem_config, err))
+            ClientFingerprint::from_agent(agent).map_err(|err| problem_config.configure(err))
         }
     }
 }

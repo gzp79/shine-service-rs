@@ -22,10 +22,17 @@ impl ProblemConfig {
     pub fn into_layer(self) -> Extension<Self> {
         Extension(self)
     }
+
+    pub fn configure<P: IntoProblem>(&self, problem: P) -> ConfiguredProblem<P> {
+        ConfiguredProblem {
+            config: self.clone(),
+            problem,
+        }
+    }
 }
 
-/// Implementation of a Problem Details response for HTTP APIs, as defined
-/// in [RFC-7807](https://datatracker.ietf.org/doc/html/rfc7807).
+/// Implementation of a Problem Details response for HTTP APIs as of
+/// the specification [RFC-7807](https://datatracker.ietf.org/doc/html/rfc7807).
 #[derive(Debug, Serialize)]
 pub struct Problem {
     #[serde(rename = "status", serialize_with = "serde_status_code::serialize")]
@@ -131,23 +138,15 @@ impl IntoProblem for Problem {
     }
 }
 
-pub struct ProblemDetail<P: IntoProblem> {
+/// A problem that is already configured with a ProblemConfig and can be converted into a response.
+pub struct ConfiguredProblem<P: IntoProblem> {
     pub config: ProblemConfig,
     pub problem: P,
 }
 
-impl<P: IntoProblem> ProblemDetail<P> {
-    pub fn from(config: &ProblemConfig, problem: P) -> Self {
-        Self {
-            config: config.clone(),
-            problem,
-        }
-    }
-}
-
-impl<P: IntoProblem> IntoResponse for ProblemDetail<P> {
+impl<P: IntoProblem> IntoResponse for ConfiguredProblem<P> {
     fn into_response(self) -> Response {
-        let ProblemDetail { problem, config } = self;
+        let ConfiguredProblem { problem, config } = self;
         problem.into_problem(&config).into_response()
     }
 }
